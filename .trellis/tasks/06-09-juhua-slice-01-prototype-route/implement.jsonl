@@ -1,0 +1,7 @@
+{"kind":"task-prd","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/prd.md","reason":"Authoritative requirements and acceptance criteria for implementation."}
+{"kind":"task-design","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/design.md","reason":"Technical design, route contract, UI boundaries, and production switcher behavior."}
+{"kind":"task-plan","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/implement.md","reason":"Ordered TDD implementation and validation plan."}
+{"kind":"task-research","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/research.md","reason":"Repository and tool research used for planning."}
+{"kind":"product-context","path":"CONTEXT.md","reason":"Required project vocabulary and out-of-scope domain concepts."}
+{"kind":"source-issue","url":"https://github.com/dnslin/sentence/issues/2","reason":"Original GitHub issue for Slice 01."}
+{"kind":"next-docs","libraryId":"/vercel/next.js/v16.2.2","reason":"Next.js 16 App Router searchParams are async in page Server Components."}

@@ -1,0 +1,28 @@
+{
+  "id": "juhua-mvp-issue-1",
+  "name": "juhua-mvp-issue-1",
+  "title": "[Issue #1] 句画 MVP: responsive sentence-card generation site",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "dnslin",
+  "assignee": "dnslin",
+  "createdAt": "2026-06-09",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-09-juhua-slice-01-prototype-route"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

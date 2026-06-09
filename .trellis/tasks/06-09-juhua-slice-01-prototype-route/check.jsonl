@@ -1,0 +1,6 @@
+{"kind":"task-prd","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/prd.md","reason":"Acceptance criteria to verify."}
+{"kind":"task-design","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/design.md","reason":"Contracts and boundaries to check against code."}
+{"kind":"task-plan","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/implement.md","reason":"Expected TDD cycles and validation commands."}
+{"kind":"task-research","path":".trellis/tasks/06-09-juhua-slice-01-prototype-route/research.md","reason":"Planning evidence and external doc notes."}
+{"kind":"product-context","path":"CONTEXT.md","reason":"Vocabulary and domain exclusions for review."}
+{"kind":"source-issue","url":"https://github.com/dnslin/sentence/issues/2","reason":"Original acceptance criteria for Slice 01."}
