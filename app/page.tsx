@@ -1,5 +1,7 @@
 import Link from "next/link"
 
+import { Button } from "@/components/ui/button"
+
 export default function Page() {
   return (
     <main className="flex min-h-svh items-center bg-[#f7f2ea] px-6 py-12 text-stone-900">
@@ -11,12 +13,9 @@ export default function Page() {
             句画会把一句随机短句和非署名绘本风画面组合成可分享的图文卡片。当前切片只提供原型入口，不实现最终首页体验。
           </p>
         </div>
-        <Link
-          href="/prototype"
-          className="w-fit rounded-full bg-stone-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-stone-700"
-        >
-          查看 /prototype 原型
-        </Link>
+        <Button asChild size="lg" className="w-fit rounded-full px-5 py-3">
+          <Link href="/prototype">查看 /prototype 原型</Link>
+        </Button>
       </section>
     </main>
   )
