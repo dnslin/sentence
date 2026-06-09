@@ -29,25 +29,27 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 - Development/non-production may render the control if it is visibly separate from product content.
 - Production must not render the control in the DOM or accessibility tree.
 - CSS-only hiding is not enough for production exclusion.
+- If development visibility or interaction is part of the feature contract, verify that behavior through a browser-observable check.
 
 **Validation & Error Matrix**:
 
 | Condition | Required behavior |
 | --- | --- |
-| `NODE_ENV !== "production"` | Control may be visible and discoverable. |
+| `NODE_ENV !== "production"` | Control may be visible and discoverable when development visibility is part of the feature contract. |
 | `NODE_ENV === "production"` | Control is not rendered. |
 | Browser/accessibility snapshot contains the production-excluded label in production | Failing check; remove server-rendered output. |
 
 **Good/Base/Bad Cases**:
 
-- Good: a floating prototype switcher appears in dev and has shareable links.
+- Good: a floating prototype switcher appears in dev and has shareable links when variant switching is a documented prototype contract.
 - Base: the production page renders the main content without the switcher.
 - Bad: the switcher is hidden with `display: none` but still exists in the production DOM.
 
 **Tests Required**:
 
-- Browser check in development/non-production confirms the control is visible when expected.
-- Production build/server browser check confirms the control label is absent from page text/accessibility output.
+- Production build/server or equivalent rendered-output check confirms the control label is absent from page text/accessibility output.
+- Development/non-production browser checks are required when the task changes the control's development visibility, interaction, or route-visible behavior.
+- Small refactors that do not alter the control contract may rely on lint/type/build plus the production exclusion check.
 
 **Wrong vs Correct**:
 
@@ -61,6 +63,78 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 
 ```tsx
 {process.env.NODE_ENV !== "production" ? <nav aria-label="原型切换器">...</nav> : null}
+```
+
+---
+
+## Development Dev-Resource Origins
+
+### Contract: browser automation origins must be explicit
+
+**Scope / Trigger**: Local browser automation or manual development opens a Next.js dev route from a host that differs from the dev server's canonical host, such as `127.0.0.1` when HMR/dev resources are served from `localhost`.
+
+**Signature**:
+
+```typescript
+// next.config.ts
+import type { NextConfig } from "next"
+
+const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1"],
+}
+
+export default nextConfig
+```
+
+**Contracts**:
+
+- Add only the specific local development origins that are needed for browser checks or manual development.
+- Do not use wildcard origins.
+- Do not treat `allowedDevOrigins` as production CORS; it must not be paired with broad production response headers for this use case.
+- Restart the dev server after changing `allowedDevOrigins`.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Browser checks open `http://127.0.0.1:<port>` and Next warns about blocked dev resources | Add `"127.0.0.1"` to `allowedDevOrigins`. |
+| Browser checks use the canonical dev host, such as `localhost` | No extra origin is required. |
+| A LAN/custom host is needed | Add that exact host only after confirming it is required for local development. |
+| Production build/server | No wildcard CORS headers or broadened production response headers are introduced by this fix. |
+
+**Good/Base/Bad Cases**:
+
+- Good: `allowedDevOrigins: ["127.0.0.1"]` when `agent-browser` checks open `127.0.0.1` and HMR/dev resources need that origin.
+- Base: no `allowedDevOrigins` entry when all browser checks use `localhost` and no warning appears.
+- Bad: adding `"*"`, adding broad production CORS headers, or using this setting to mask an unrelated production cross-origin problem.
+
+**Tests Required**:
+
+- `pnpm typecheck` must accept the `NextConfig` shape.
+- `pnpm build` must still pass and must not depend on the development-only origin allowance.
+- A browser-observable dev check should use either the canonical host or the explicitly allowed local host.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```typescript
+const nextConfig = {
+  headers: async () => [
+    {
+      source: "/:path*",
+      headers: [{ key: "Access-Control-Allow-Origin", value: "*" }],
+    },
+  ],
+}
+```
+
+#### Correct
+
+```typescript
+const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1"],
+}
 ```
 
 ---
@@ -86,5 +160,5 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 - [ ] Linter passes.
 - [ ] Type checker passes.
 - [ ] Production build passes.
-- [ ] Browser-visible acceptance criteria are checked through a browser tool or equivalent public interface.
+- [ ] Browser-visible acceptance criteria are checked through a browser tool or equivalent public interface when the route/control behavior is the public contract.
 - [ ] Prototype/development affordances are absent from production output.

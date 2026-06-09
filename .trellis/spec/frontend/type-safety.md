@@ -31,6 +31,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 - `searchParams` is a Promise in Next.js 16 App Router pages.
 - Individual fields may be `string`, `string[]`, or `undefined`.
 - Route code must normalize query values once before selecting behavior.
+- Public/browser-observable query behavior must document its default and fallback values near the route boundary.
 
 **Validation & Error Matrix**:
 
@@ -42,15 +43,19 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
 **Good/Base/Bad Cases**:
 
-- Good: `?variant=quiet-gallery` selects a known variant.
-- Base: no `variant` falls back to the default variant.
+- Good: `?variant=quiet-gallery` selects a known public variant.
+- Base: no `variant` falls back to the documented default variant.
 - Bad: `?variant=a&variant=b` must not silently select one arbitrary value unless arrays are part of the route contract.
 
 **Tests Required**:
 
-- Browser or route-level check for valid query values.
-- Browser or route-level check for missing query fallback.
-- Browser or route-level check for repeated query fallback when the route accepts only one value.
+For routes where query behavior is a public/browser-observable contract, run browser or route-level checks for:
+
+- Valid query values.
+- Missing query fallback.
+- Repeated query fallback when the route accepts only one value.
+
+For routes where query values only support internal implementation details, tests may be covered through the owning feature's behavior, but the route boundary must still normalize `string | string[] | undefined` before use.
 
 **Wrong vs Correct**:
 
@@ -84,6 +89,106 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
 ---
 
+## Static Pages With Browser Query Selection
+
+### Contract: keep static routes static when the server does not need request-bound query data
+
+**Scope / Trigger**: A route uses query parameters only to select browser-visible UI state, and all selectable data is local/static.
+
+**Signature**:
+
+```tsx
+// app/example/page.tsx
+import { Suspense } from "react"
+
+import { ExampleExperience } from "./example-experience"
+
+export default function Page() {
+  return (
+    <Suspense fallback={<DefaultExperience />}>
+      <ExampleExperience />
+    </Suspense>
+  )
+}
+```
+
+```tsx
+// app/example/example-experience.tsx
+"use client"
+
+import { useSearchParams } from "next/navigation"
+
+export function ExampleExperience() {
+  const searchParams = useSearchParams()
+  const values = searchParams.getAll("variant")
+  const selected = normalizeVariant(values)
+
+  return <VariantView selected={selected} />
+}
+```
+
+**Contracts**:
+
+- Do not read Server Component `searchParams` just to select among local/static UI variants.
+- Use a client component with `useSearchParams()` when the query affects only browser-visible state.
+- Wrap the client component in `Suspense` so the route can remain statically prerendered.
+- Normalize repeated values with `getAll()` when repeated query values must fall back.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Server needs query data for data fetching, auth, redirects, metadata, or status codes | Use server `searchParams`; dynamic rendering is expected. |
+| Query only selects local/static UI | Prefer client `useSearchParams` under `Suspense`; build should keep the route static. |
+| Repeated query values | Use `getAll()` and apply the documented fallback. |
+| Missing JavaScript before hydration | Suspense fallback must render a safe documented default. |
+
+**Good/Base/Bad Cases**:
+
+- Good: `/prototype?variant=paper-desk` selects a static variant in the client while `next build` reports `○ /prototype`.
+- Base: `/prototype` renders the fallback/default variant before hydration and the same default after hydration.
+- Bad: awaiting server `searchParams` for static local variants makes the route `ƒ` dynamic without server-side need.
+
+**Tests Required**:
+
+- `pnpm build` or equivalent must confirm the route remains static when static rendering is expected.
+- Browser checks must cover valid, missing, invalid, and repeated query values when query selection is public behavior.
+- If the route intentionally stays dynamic, document the server-side need in the task design or code comments.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```tsx
+export default async function Page({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams
+  return <VariantView selected={normalizeVariant(params.variant)} />
+}
+```
+
+#### Correct
+
+```tsx
+export default function Page() {
+  return (
+    <Suspense fallback={<DefaultVariant />}>
+      <VariantExperience />
+    </Suspense>
+  )
+}
+```
+
+```tsx
+"use client"
+
+function VariantExperience() {
+  const selected = normalizeVariant(useSearchParams().getAll("variant"))
+  return <VariantView selected={selected} />
+}
+```
+
+---
+
 ## Type Organization
 
 - Keep page-local route query types near the page when they are not shared.
@@ -95,6 +200,7 @@ export default async function Page({ searchParams }: { searchParams: SearchParam
 
 - Validate framework boundary values at the route entry point.
 - Rendering code should receive normalized values, not raw `string | string[] | undefined` values.
+- Browser or route-level query checks are required when the query controls documented public route behavior.
 
 ---
 

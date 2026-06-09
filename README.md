@@ -23,4 +23,20 @@ pnpm dev
 - `immersive-stage`
 - `paper-desk`
 
-缺失或无效的 `variant` 会回退到 `quiet-gallery`。
+缺失、无效或重复的 `variant` 会回退到 `quiet-gallery`。
+
+## shadcn UI 组件
+
+项目使用 shadcn UI 作为可复用组件来源。新增组件时，先通过 CLI 生成到 `components/ui/`：
+
+```bash
+pnpm dlx shadcn@latest add button
+```
+
+在页面或组件中从本地文件导入生成后的 primitive：
+
+```tsx
+import { Button } from "@/components/ui/button"
+```
+
+优先复用已有 primitive；例如链接型 CTA 使用 `Button` 的 `asChild` 包裹 Next.js `Link`，避免重复焦点和交互样式。
