@@ -139,6 +139,67 @@ const nextConfig: NextConfig = {
 
 ---
 
+## Reduced Motion Browser Checks
+
+### Contract: inspect individual transform properties
+
+**Scope / Trigger**: Any browser-observable check that verifies Tailwind CSS transform or animation behavior, especially `prefers-reduced-motion` handling.
+
+**Signature**:
+
+```typescript
+const styles = getComputedStyle(element)
+const duration = styles.transitionDuration
+const rotate = styles.rotate
+const transform = styles.transform
+```
+
+**Contracts**:
+
+- Tailwind CSS may emit individual transform properties such as `rotate`, `scale`, or `translate` rather than a matrix-valued `transform` property.
+- A reduced-motion check must inspect the individual property that the implementation uses, not only `transform`.
+- Reduced-motion behavior passes only when non-essential transition duration is `0s` and the relevant transform property is neutral, such as `rotate === "none"` or `rotate === "0deg"`.
+- Default-motion behavior may be verified with either visible movement or computed styles, but the assertion must target the emitted property.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Default motion uses `motion-safe:-rotate-1` | Computed `rotate` may be `-1deg` while computed `transform` remains `none`. |
+| Reduced motion uses `motion-reduce:transition-none` and no `motion-safe` transform applies | Computed `transitionDuration` is `0s` and computed `rotate` is neutral. |
+| A check only asserts `transform !== "none"` for Tailwind rotate utilities | Treat as an invalid check; it can false-fail when rotate is emitted separately. |
+| A check only asserts `transform === "none"` under reduced motion | Incomplete; also inspect `rotate`, `scale`, or `translate` when those utilities are used. |
+
+**Good/Base/Bad Cases**:
+
+- Good: after clicking a refresh control, default motion reports `transitionDuration: "0.5s"` and `rotate: "-1deg"`; reduced motion reports `transitionDuration: "0s"` and `rotate: "none"`.
+- Base: components without transform utilities only check transition duration or visible behavior.
+- Bad: failing a valid Tailwind rotate animation because `getComputedStyle(element).transform` is `none`.
+
+**Tests Required**:
+
+- Browser checks for reduced-motion features must emulate `prefers-reduced-motion: reduce` and assert the actual computed property used by the class (`rotate`, `scale`, `translate`, or `transform`).
+- If default motion is part of the behavior contract, also verify the default media mode so the reduced-motion assertion is not vacuous.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```typescript
+const styles = getComputedStyle(card)
+expect(styles.transform).not.toBe("none")
+```
+
+#### Correct
+
+```typescript
+const styles = getComputedStyle(card)
+expect(styles.transitionDuration).toBe("0s")
+expect(["none", "0deg"]).toContain(styles.rotate)
+```
+
+---
+
 ## Required Patterns
 
 - For route features, verify the route through browser-observable behavior when feasible.
