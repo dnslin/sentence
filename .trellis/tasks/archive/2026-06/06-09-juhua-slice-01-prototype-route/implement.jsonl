@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/prd.md","reason":"Authoritative requirements and acceptance criteria for implementation."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/design.md","reason":"Technical design, route contract, UI boundaries, and production switcher behavior."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/implement.md","reason":"Ordered TDD implementation and validation plan."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/research.md","reason":"Repository and tool research used for planning."}
+{"file":"CONTEXT.md","reason":"Required project vocabulary and out-of-scope domain concepts."}

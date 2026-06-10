@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend quality checklist."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify narrowed query boundary guidance."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify narrowed prototype-only control guidance."}
+{"file":".trellis/tasks/06-09-fix-juhua-prototype-review-findings/prd.md","reason":"Acceptance criteria to verify."}
+{"file":".trellis/tasks/06-09-fix-juhua-prototype-review-findings/design.md","reason":"Contracts and file ownership boundaries."}
+{"file":".trellis/tasks/06-09-fix-juhua-prototype-review-findings/implement.md","reason":"Expected validation plan."}

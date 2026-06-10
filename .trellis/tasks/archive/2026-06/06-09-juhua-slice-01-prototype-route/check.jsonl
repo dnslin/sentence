@@ -1,0 +1,5 @@
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/prd.md","reason":"Acceptance criteria to verify."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/design.md","reason":"Contracts and boundaries to check against code."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/implement.md","reason":"Expected TDD cycles and validation commands."}
+{"file":".trellis/tasks/archive/2026-06/06-09-juhua-slice-01-prototype-route/research.md","reason":"Planning evidence and external doc notes."}
+{"file":"CONTEXT.md","reason":"Vocabulary and domain exclusions for review."}
