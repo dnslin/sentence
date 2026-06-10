@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-06-09
+- **Total Sessions**: 2
+- **Last Active**: 2026-06-10
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~42 | Active |
+| `journal-1.md` | ~78 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-06-10 | Repair Juhua prototype review findings | `d4dfb5a`, `cc4ff68`, `76b0804`, `860b5d0` | `feat/juhua-slice-01-prototype-route` |
 | 1 | 2026-06-09 | Implement Juhua Slice 01 prototype route | `d1ef325`, `bb9be39`, `aed9081` | `feat/juhua-slice-01-prototype-route` |
 <!-- @@@/auto:session-history -->
 
