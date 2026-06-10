@@ -109,3 +109,37 @@ Created a verification-only Trellis task for closed GitHub issue #2, confirmed t
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Issue 3 Quiet Gallery homepage
+
+**Date**: 2026-06-10
+**Task**: Issue 3 Quiet Gallery homepage
+**Branch**: `issue-3-quiet-gallery-homepage`
+
+### Summary
+
+Implemented the selected Quiet Gallery public homepage with local mock card data, accessible mock controls, query-driven visual states, responsive and reduced-motion checks, plus frontend reduced-motion verification guidance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7472a18` | (see git log) |
+| `97c06bb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
