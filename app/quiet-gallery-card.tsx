@@ -1,8 +1,7 @@
+import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 import { cn } from "@/lib/utils"
 
-import type { CardMock } from "./home-card-source"
-
-export function QuietGalleryCard({ card, isTilted }: { card: CardMock; isTilted: boolean }) {
+export function QuietGalleryCard({ card, isTilted }: { card: PublicReadyCard; isTilted: boolean }) {
   return (
     <article
       aria-label="图文卡片预览"
