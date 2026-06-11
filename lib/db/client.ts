@@ -27,6 +27,7 @@ export function createDatabaseClient() {
   ensureDatabaseDirectory(databasePath)
 
   const sqlite = new DatabaseSync(databasePath)
+  sqlite.exec("PRAGMA foreign_keys = ON")
   sqlite.exec("PRAGMA journal_mode = WAL")
 
   const query: RemoteCallback = async (sql, params, method) => {

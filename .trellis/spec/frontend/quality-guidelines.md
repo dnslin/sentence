@@ -263,6 +263,96 @@ expect(["none", "0deg"]).toContain(styles.rotate)
 
 ---
 
+## Refresh Action UI State
+
+### 1. Scope / Trigger
+
+Use this contract when a production-facing route turns a placeholder action into a real browser/API flow, especially the homepage `再来一张` refresh action.
+
+### 2. Signatures
+
+**Component inputs**
+
+```typescript
+export function HomeCardExperience({ card }: { card: PublicReadyCard })
+```
+
+**API response guard**
+
+```typescript
+function isReadyCardResponse(value: unknown): value is ReadyCardResponse
+```
+
+**Renderer state**
+
+```typescript
+export function QuietGalleryCard({
+  card,
+  isRefreshing,
+  isTilted,
+}: {
+  card: PublicReadyCard
+  isRefreshing: boolean
+  isTilted: boolean
+})
+```
+
+### 3. Contracts
+
+- The client may replace the rendered 图文卡片 only after `/api/ready-card` returns `ok` and the JSON narrows through `isReadyCardResponse`.
+- While refresh is pending, the button must be disabled or otherwise prevent duplicate concurrent requests.
+- Pending state must be visible through public UI, such as button copy and `aria-busy` on the card article.
+- Failure must keep the current card visible, announce that refresh failed, and re-enable retry.
+- Public copy must say refresh is implemented only after it really calls the API; download/share placeholder copy must remain truthful until those actions are implemented.
+- Non-essential motion must use `motion-safe`/`motion-reduce` so reduced-motion users do not depend on animation to understand state.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| API returns valid `{ card }` | Replace sentence and illustration accessible label together. |
+| API returns non-OK status | Keep current card, announce failure, re-enable refresh. |
+| API returns invalid JSON shape | Keep current card, announce failure, re-enable refresh. |
+| User clicks repeatedly while pending | Send at most one in-flight refresh request. |
+| Pending state active | Existing card remains visible and exposes busy/loading state. |
+| Reduced motion active | State remains understandable without relying on transform animation. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: clicking `再来一张` changes both `“sentence”` text and `role="img"` accessible label after a successful API response.
+- Base: a delayed API response shows `刷新生成中`, disables the button, and leaves the current card visible.
+- Bad: optimistically replacing only the sentence before the server returns a canonical 图文绑定.
+- Bad: catching refresh failure by clearing the card or showing fake empty-stock UI.
+
+### 6. Tests Required
+
+For refresh UI work, use browser-visible tests that assert:
+
+- Clicking `再来一张` waits for `/api/ready-card` and replaces sentence plus image accessible label.
+- A delayed response shows pending copy/state and prevents duplicate requests.
+- A failed response keeps the current card, announces failure, and allows retry.
+- Placeholder actions not implemented in the current slice still announce truthful placeholder copy.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+// Trusts untyped JSON and can replace only part of the card binding.
+const body = await response.json()
+setCurrentCard(body.card)
+```
+
+#### Correct
+
+```tsx
+const body: unknown = await response.json()
+if (!isReadyCardResponse(body)) throw new Error("invalid ready-card response")
+setCurrentCard(body.card)
+```
+
+---
+
 ## Required Patterns
 
 - For route features, verify the route through browser-observable behavior when feasible.

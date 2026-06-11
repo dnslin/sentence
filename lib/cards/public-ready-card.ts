@@ -18,3 +18,26 @@ export type ReadyCardResponse = {
 export function isReadyCardAccent(value: string): value is ReadyCardAccent {
   return readyCardAccents.includes(value as ReadyCardAccent)
 }
+
+export function isPublicReadyCard(value: unknown): value is PublicReadyCard {
+  if (typeof value !== "object" || value === null) return false
+
+  const card = value as Record<string, unknown>
+
+  return (
+    typeof card.id === "string" &&
+    typeof card.sentence === "string" &&
+    typeof card.sceneLabel === "string" &&
+    typeof card.accent === "string" &&
+    isReadyCardAccent(card.accent) &&
+    card.status === "ready"
+  )
+}
+
+export function isReadyCardResponse(
+  value: unknown
+): value is ReadyCardResponse {
+  if (typeof value !== "object" || value === null) return false
+
+  return isPublicReadyCard((value as { card?: unknown }).card)
+}

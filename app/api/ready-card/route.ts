@@ -1,6 +1,8 @@
+import { cookies, headers } from "next/headers"
 import { NextResponse } from "next/server"
 
-import { getOneReadyCard } from "@/lib/cards/ready-card-repository"
+import { createReadyCardRequestContext } from "@/lib/cards/ready-card-request-context"
+import { getNextReadyCardForVisitor } from "@/lib/cards/ready-card-repository"
 import { createDatabaseClient } from "@/lib/db/client"
 
 import type { ReadyCardResponse } from "@/lib/cards/public-ready-card"
@@ -17,7 +19,11 @@ export async function GET() {
   const client = createDatabaseClient()
 
   try {
-    const card = await getOneReadyCard(client)
+    const context = createReadyCardRequestContext({
+      cookiesList: await cookies(),
+      headersList: await headers(),
+    })
+    const card = await getNextReadyCardForVisitor(client, context)
 
     if (!card) {
       return NextResponse.json<ReadyCardErrorResponse>(

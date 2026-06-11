@@ -1,15 +1,26 @@
 import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 import { cn } from "@/lib/utils"
 
-export function QuietGalleryCard({ card, isTilted }: { card: PublicReadyCard; isTilted: boolean }) {
+export function QuietGalleryCard({
+  card,
+  isRefreshing = false,
+  isTilted,
+}: {
+  card: PublicReadyCard
+  isRefreshing?: boolean
+  isTilted: boolean
+}) {
   return (
     <article
+      aria-busy={isRefreshing}
       aria-label="图文卡片预览"
       data-card="quiet-gallery"
       className={cn(
         "grid aspect-[4/5] w-full max-w-[min(24rem,calc(100vw-2rem))] grid-rows-[3fr_1fr] overflow-hidden rounded-[2rem] border border-stone-200 bg-white p-3 shadow-[0_24px_70px_rgba(87,72,52,0.14)] sm:max-w-[26rem] sm:p-4",
-        "motion-safe:transition-transform motion-safe:duration-500 motion-safe:ease-out motion-reduce:transition-none",
-        isTilted ? "motion-safe:-rotate-1" : "motion-safe:rotate-0"
+        "motion-safe:transition motion-safe:duration-500 motion-safe:ease-out motion-reduce:transition-none",
+        isTilted ? "motion-safe:-rotate-1" : "motion-safe:rotate-0",
+        isRefreshing &&
+          "opacity-80 motion-safe:scale-[0.99] motion-reduce:opacity-100"
       )}
     >
       <div
@@ -17,9 +28,12 @@ export function QuietGalleryCard({ card, isTilted }: { card: PublicReadyCard; is
         aria-label={card.sceneLabel}
         className={cn(
           "relative overflow-hidden rounded-t-[1.5rem]",
-          card.accent === "dawn" && "bg-[linear-gradient(180deg,#f8e2bd_0%,#edf1df_58%,#d5dfcc_100%)]",
-          card.accent === "rain" && "bg-[linear-gradient(180deg,#dfe8e3_0%,#eef0e9_48%,#c9d7d4_100%)]",
-          card.accent === "moon" && "bg-[linear-gradient(180deg,#d9dfef_0%,#ece8dd_54%,#c9d0bd_100%)]"
+          card.accent === "dawn" &&
+            "bg-[linear-gradient(180deg,#f8e2bd_0%,#edf1df_58%,#d5dfcc_100%)]",
+          card.accent === "rain" &&
+            "bg-[linear-gradient(180deg,#dfe8e3_0%,#eef0e9_48%,#c9d7d4_100%)]",
+          card.accent === "moon" &&
+            "bg-[linear-gradient(180deg,#d9dfef_0%,#ece8dd_54%,#c9d0bd_100%)]"
         )}
       >
         <div className="absolute top-8 left-8 h-16 w-16 rounded-full bg-amber-100/80 blur-sm" />
@@ -31,7 +45,9 @@ export function QuietGalleryCard({ card, isTilted }: { card: PublicReadyCard; is
         <div className="absolute bottom-0 left-0 h-16 w-full bg-gradient-to-t from-white/45 to-transparent" />
       </div>
       <div className="flex items-center justify-center rounded-b-[1.5rem] bg-[#fbf3e6] px-6 py-5 text-center">
-        <p className="text-xl leading-9 font-medium text-stone-700 sm:text-2xl sm:leading-10">“{card.sentence}”</p>
+        <p className="text-xl leading-9 font-medium text-stone-700 sm:text-2xl sm:leading-10">
+          “{card.sentence}”
+        </p>
       </div>
     </article>
   )
