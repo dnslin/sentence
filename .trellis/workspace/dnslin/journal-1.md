@@ -245,3 +245,39 @@ Fixed PR 20 review findings for the SQLite/Drizzle ready-card path, verified loc
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Issue 5 refresh flow recent-card avoidance
+
+**Date**: 2026-06-11
+**Task**: Issue 5 refresh flow recent-card avoidance
+**Branch**: `issue-5-refresh-flow-recent-card-avoidance`
+
+### Summary
+
+Implemented issue #5 refresh flow with anonymous ready-card identity, recent-50 avoidance, real homepage refresh UI, review-fix hardening, specs/tests updates, and merged PR #21.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bbcbd55` | (see git log) |
+| `2f4f7ff` | (see git log) |
+| `3975849` | (see git log) |
+| `5929e47` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
