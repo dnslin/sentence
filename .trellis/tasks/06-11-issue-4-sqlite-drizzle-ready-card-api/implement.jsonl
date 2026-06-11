@@ -1,0 +1,7 @@
+{"file": "CONTEXT.md", "reason": "Product vocabulary for 图文卡片, 一言, 图文绑定, 刷新生成, 随机短句, 非署名绘本风"}
+{"file": "CLAUDE.md", "reason": "Project architecture, commands, frontend contracts, and accepted backend direction"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Ready-card pool direction that this first API slice must not contradict"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "SQLite WAL via Drizzle and local WebP storage decision"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Next.js App Router and route boundary type-safety contracts"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Production route truthfulness and browser-visible verification requirements"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Shared contract/data-flow guidance for DB/API/UI feature"}
