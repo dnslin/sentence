@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
+- **Total Sessions**: 8
 - **Last Active**: 2026-06-11
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~247 | Active |
+| `journal-1.md` | ~283 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-06-11 | Issue 5 refresh flow recent-card avoidance | `bbcbd55`, `2f4f7ff`, `3975849`, `5929e47` | `issue-5-refresh-flow-recent-card-avoidance` |
 | 7 | 2026-06-11 | Fix PR 20 code review findings | `a0a5893`, `eb64307` | `issue-4-sqlite-drizzle-ready-card-api` |
 | 6 | 2026-06-11 | Issue 4 SQLite Drizzle ready card API | `02ac05c`, `c1764b0`, `9bd40ee` | `issue-4-sqlite-drizzle-ready-card-api` |
 | 5 | 2026-06-11 | Finish PR #19 homepage review fixes | `d51fa23` | `issue-3-quiet-gallery-homepage` |
