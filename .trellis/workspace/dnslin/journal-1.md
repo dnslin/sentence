@@ -143,3 +143,36 @@ Implemented the selected Quiet Gallery public homepage with local mock card data
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: Finish PR #19 homepage review fixes
+
+**Date**: 2026-06-11
+**Task**: Finish PR #19 homepage review fixes
+**Branch**: `issue-3-quiet-gallery-homepage`
+
+### Summary
+
+Resolved PR #19 homepage review findings: removed public mock state query handling and interactive fallback, split homepage card modules, fixed repeated action announcements, updated frontend quality guidance, and corrected archived Trellis manifest paths.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d51fa23` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
