@@ -1,0 +1,7 @@
+{"file": "CLAUDE.md", "reason": "Verify testing instructions match package scripts"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Verify database/API contracts remain accurate after fixes"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Verify spec index remains accurate"}
+{"file": "CONTEXT.md", "reason": "Verify no product semantics drift"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Verify ready-card query/index behavior remains compatible with pool direction"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "Verify SQLite WAL/Drizzle direction remains intact"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify DB/API/UI cross-layer consistency"}

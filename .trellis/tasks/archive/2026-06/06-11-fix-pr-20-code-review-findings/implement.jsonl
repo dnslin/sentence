@@ -1,0 +1,7 @@
+{"file": "CLAUDE.md", "reason": "Project commands/testing instructions must be corrected after adding Playwright"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Executable SQLite/Drizzle ready-card database contract to preserve or update"}
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend spec index status and database guidance link"}
+{"file": "CONTEXT.md", "reason": "Product vocabulary and out-of-scope semantics for ready card behavior"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Ready-card pool direction and future inventory expectations"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "SQLite WAL via Drizzle and local file storage decision"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "DB/API/UI cross-layer contract validation"}

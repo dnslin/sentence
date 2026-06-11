@@ -10,6 +10,13 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+
+# local databases
+/data/*.sqlite*
+/data/*.db*
+/test-data/
 
 # next.js
 /.next/

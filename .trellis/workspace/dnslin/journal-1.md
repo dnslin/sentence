@@ -176,3 +176,72 @@ Resolved PR #19 homepage review findings: removed public mock state query handli
 ### Next Steps
 
 - None - task complete
+
+
+## Session 6: Issue 4 SQLite Drizzle ready card API
+
+**Date**: 2026-06-11
+**Task**: Issue 4 SQLite Drizzle ready card API
+**Branch**: `issue-4-sqlite-drizzle-ready-card-api`
+
+### Summary
+
+Implemented issue #4: SQLite/Drizzle ready-card store with WAL, idempotent seed, public ready-card API, API-backed homepage rendering, Playwright behavior tests, and backend database contract documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `02ac05c` | (see git log) |
+| `c1764b0` | (see git log) |
+| `9bd40ee` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 7: Fix PR 20 code review findings
+
+**Date**: 2026-06-11
+**Task**: Fix PR 20 code review findings
+**Branch**: `issue-4-sqlite-drizzle-ready-card-api`
+
+### Summary
+
+Fixed PR 20 review findings for the SQLite/Drizzle ready-card path, verified locally, pushed PR 20, and archived the Trellis task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a0a5893` | (see git log) |
+| `eb64307` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

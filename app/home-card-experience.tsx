@@ -3,8 +3,8 @@
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 
-import { mockCards } from "./home-card-source"
 import { QuietGalleryCard } from "./quiet-gallery-card"
 
 type Announcement = {
@@ -12,27 +12,25 @@ type Announcement = {
   sequence: number
 }
 
-export function HomeCardExperience() {
-  const [cardIndex, setCardIndex] = useState(0)
+export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
   const [announcement, setAnnouncement] = useState<Announcement>({ text: "", sequence: 0 })
-  const card = mockCards[cardIndex]
 
   function announce(text: string) {
     setAnnouncement((current) => ({ text, sequence: current.sequence + 1 }))
   }
 
-  function showNextCard() {
-    setCardIndex((current) => (current + 1) % mockCards.length)
-    announce("已换一张本地 mock 图文卡片。")
-  }
-
   return (
     <>
-      <QuietGalleryCard card={card} isTilted={cardIndex % 2 === 1} />
+      <QuietGalleryCard card={card} isTilted={false} />
 
       <div className="flex w-full flex-col items-center gap-3">
         <div className="flex w-full max-w-xl flex-col justify-center gap-3 sm:flex-row" aria-label="图文卡片操作">
-          <Button type="button" size="lg" className="rounded-full px-5" onClick={showNextCard}>
+          <Button
+            type="button"
+            size="lg"
+            className="rounded-full px-5"
+            onClick={() => announce("刷新生成会在后续切片接入；现在仍显示这张已准备好的图文卡片。")}
+          >
             再来一张
           </Button>
           <Button

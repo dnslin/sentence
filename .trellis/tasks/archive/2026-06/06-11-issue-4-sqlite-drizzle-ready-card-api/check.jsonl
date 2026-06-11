@@ -1,0 +1,7 @@
+{"file": "CONTEXT.md", "reason": "Verify product terms and out-of-scope semantics stay intact"}
+{"file": "CLAUDE.md", "reason": "Verify commands, project architecture, and public copy constraints"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Verify ready-card path remains compatible with future pool behavior"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "Verify SQLite WAL/Drizzle/local file-storage constraints"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify strict route/component type boundaries"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify production-visible homepage behavior and no mock-only public state"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify database/API/frontend contract consistency"}
