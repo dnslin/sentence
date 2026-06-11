@@ -161,3 +161,145 @@ const [row] = await client.db
   .where(eq(cards.status, "ready"))
   .limit(1)
 ```
+
+---
+
+## Scenario: Ready-card refresh with anonymous recent-window avoidance
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches refresh selection, anonymous ready-card identity, `proxy.ts`, `/api/ready-card`, homepage ready-card loading, ready-card seed volume, or the `ready_card_views` table.
+
+This is a cross-layer path:
+
+```text
+proxy.ts anonymous cookie
+  → app/page.tsx / app/api/ready-card/route.ts request context
+  → getNextReadyCardForVisitor(...)
+  → ready_card_views recent window
+  → PublicReadyCard DTO
+```
+
+### 2. Signatures
+
+**Anonymous cookie**
+
+- Name: `juhua_anonymous_id`
+- Value: UUID string validated before use
+- Options: `httpOnly`, `sameSite: "lax"`, `path: "/"`, `secure` only on HTTPS
+- Lifetime: session cookie unless a future product decision adds retention
+
+**Request context**
+
+```typescript
+type ReadyCardRequestContext = {
+  visitorKey: string
+}
+
+function createReadyCardRequestContext(input: {
+  cookiesList: { get(name: string): { value: string } | undefined }
+  headersList: { get(name: string): string | null }
+}): ReadyCardRequestContext
+```
+
+**Selection API**
+
+```typescript
+async function getNextReadyCardForVisitor(
+  client: DatabaseClient,
+  context: ReadyCardRequestContext
+): Promise<PublicReadyCard | null>
+```
+
+**Database table**
+
+```text
+ready_card_views(
+  id text primary key,
+  visitor_key text not null,
+  card_id text not null references cards(id),
+  seen_at integer not null
+)
+```
+
+Required indexes:
+
+- `ready_card_views_recent_idx(visitor_key, seen_at)`
+- `ready_card_views_card_idx(visitor_key, card_id, seen_at)`
+
+### 3. Contracts
+
+- `proxy.ts` must match `/` and `/api/ready-card` so the first server-rendered homepage card and later API refreshes share identity.
+- If the anonymous cookie is missing or invalid, `proxy.ts` must mint a UUID, remove any stale cookie with the same name from the forwarded `Cookie` header, forward the minted cookie to the downstream request, and set it on the response.
+- `proxy.ts` must not import modules that depend on Node-only APIs; shared cookie-name/validation helpers used by proxy must be edge-safe.
+- Server request context must derive `visitorKey` from the anonymous cookie plus normalized request IP context (`x-forwarded-for` first token, then `x-real-ip`, then `unknown`) and store only the hash, not raw cookie/IP values.
+- Homepage and API must call the same selection/recording path; do not keep a separate `getOneReadyCard` path for homepage.
+- Selection must avoid the visitor's most recent 50 served cards when there is any ready card outside that window.
+- If all ready cards are in the recent window, selection returns a ready fallback rather than a false empty-stock response.
+- Every returned card from this path must be recorded in `ready_card_views` with a strictly increasing `seen_at` for that visitor to avoid same-millisecond ordering ambiguity.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Missing or invalid anonymous cookie | Mint and forward a valid anonymous cookie before page/API selection runs. |
+| Existing invalid cookie plus newly minted cookie | Forward only the valid minted cookie for `juhua_anonymous_id`; do not append behind the invalid value. |
+| Missing IP headers | Use `unknown` as the IP context component. |
+| More than 50 ready cards exist | Do not return any card ID from the same visitor's prior 50 served cards. |
+| All ready cards are inside the prior 50 | Return the least-recent ready fallback, not `ready_card_not_found`. |
+| No ready cards exist | Return the existing `404 { error: "ready_card_not_found" }` API response or homepage setup error. |
+| Rapid repeated requests share a timestamp millisecond | Persist `seen_at` as greater than that visitor's latest recorded value. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a visitor loads `/`, clicks `再来一张`, and the API response is selected with the initial homepage card already in the recent window.
+- Base: a fresh API visitor receives the stable first ready card and a `Set-Cookie` header.
+- Base: a second anonymous visitor is not affected by the first visitor's `ready_card_views` rows.
+- Bad: using only `localStorage` or `exclude=currentId`; the server cannot enforce recent-50 behavior or count the server-rendered initial card.
+- Bad: storing raw cookie values or raw IP addresses in SQLite for this feature.
+
+### 6. Tests Required
+
+For changes to this path, add or update public API/browser tests that assert:
+
+- `GET /api/ready-card` sets an anonymous cookie for a fresh visitor.
+- With enough seed cards, repeated API calls for one visitor never return an ID from the prior 50 responses.
+- A separate anonymous request context starts independently from the first visitor.
+- Visiting `/` records the initial card so the next `/api/ready-card` response does not repeat it when enough ready cards exist.
+- No-ready-card API behavior still returns `ready_card_not_found`.
+- `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Separate homepage path: initial card is invisible to refresh history.
+const card = await getOneReadyCard(client)
+```
+
+#### Correct
+
+```typescript
+const context = createReadyCardRequestContext({ cookiesList, headersList })
+const card = await getNextReadyCardForVisitor(client, context)
+```
+
+#### Wrong
+
+```typescript
+// Proxy imports Node-only hashing helper and appends after an invalid cookie.
+import { anonymousCookieName } from "@/lib/cards/ready-card-request-context"
+requestHeaders.set("cookie", `${oldCookie}; ${anonymousCookieName}=${id}`)
+```
+
+#### Correct
+
+```typescript
+import { anonymousCookieName } from "@/lib/cards/anonymous-ready-card-identity"
+
+requestHeaders.set(
+  "cookie",
+  buildCookieHeaderWithoutExistingAnonymousCookie(oldCookie, id)
+)
+```
