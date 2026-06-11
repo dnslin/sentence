@@ -1,16 +1,13 @@
-import { mkdirSync, readdirSync, readFileSync } from "node:fs"
-import { dirname, isAbsolute, join, resolve } from "node:path"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 
-const configuredDatabasePath = process.env.JUHUA_DATABASE_PATH
-const databasePath = configuredDatabasePath
-  ? isAbsolute(configuredDatabasePath)
-    ? configuredDatabasePath
-    : resolve(configuredDatabasePath)
-  : join(process.cwd(), "data", "juhua.sqlite")
+import { ensureDatabaseDirectory, resolveDatabasePath } from "@/lib/db/client"
+
+const databasePath = resolveDatabasePath()
 const migrationsPath = join(process.cwd(), "drizzle")
 
-mkdirSync(dirname(databasePath), { recursive: true })
+ensureDatabaseDirectory(databasePath)
 
 const sqlite = new DatabaseSync(databasePath)
 
@@ -24,6 +21,8 @@ function isMigrationRow(row: unknown): row is MigrationRow {
 
 try {
   sqlite.exec("PRAGMA journal_mode = WAL")
+  // This first local migration runner records filenames only. Checksum validation
+  // is deferred until there are mutable production migrations to protect.
   sqlite.exec("CREATE TABLE IF NOT EXISTS __drizzle_migrations (name text PRIMARY KEY NOT NULL, applied_at integer NOT NULL)")
 
   const appliedRows = sqlite.prepare("SELECT name FROM __drizzle_migrations").all()

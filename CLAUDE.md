@@ -5,15 +5,16 @@
 ## Commands
 
 - Install dependencies: `pnpm install`
-- Start the development server: `pnpm dev`
+- Start the development server: `pnpm dev` (runs `pnpm db:setup` first)
 - Build for production: `pnpm build`
-- Start the built app: `pnpm start`
+- Start the built app: `pnpm start` (runs `pnpm db:setup` first)
 - Lint: `pnpm lint`
 - Type-check: `pnpm typecheck`
+- Run browser e2e checks: `pnpm test:e2e`
 - Format TypeScript/TSX files: `pnpm format`
 - Add a shadcn UI component: `pnpm dlx shadcn@latest add <component>`
 
-There is currently no `test` script or test runner configured in `package.json`, so there is no project command for running the full test suite or a single test file yet. For route-visible UI behavior, use lint/typecheck/build plus browser-observable checks appropriate to the change.
+There is no unit-test runner configured yet. For ready-card route behavior, use `pnpm test:e2e`; for other route-visible UI behavior, use lint/typecheck/build plus browser-observable checks appropriate to the change.
 
 ## Product language and constraints
 

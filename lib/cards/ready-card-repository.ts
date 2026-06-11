@@ -1,6 +1,6 @@
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 
-import { isReadyCardAccent, type PublicReadyCard } from "./public-ready-card"
+import { readyCardAccents, type PublicReadyCard } from "./public-ready-card"
 
 import { cards, sentences } from "@/lib/db/schema"
 
@@ -10,19 +10,11 @@ type ReadyCardRow = {
   id: string
   sentence: string
   sceneLabel: string
-  accent: string
-  status: string
+  accent: PublicReadyCard["accent"]
+  status: PublicReadyCard["status"]
 }
 
 function toPublicReadyCard(row: ReadyCardRow): PublicReadyCard {
-  if (row.status !== "ready") {
-    throw new Error(`Unexpected ready card status: ${row.status}`)
-  }
-
-  if (!isReadyCardAccent(row.accent)) {
-    throw new Error(`Unexpected ready card accent: ${row.accent}`)
-  }
-
   return {
     id: row.id,
     sentence: row.sentence,
@@ -43,11 +35,11 @@ export async function getOneReadyCard(client: DatabaseClient): Promise<PublicRea
     })
     .from(cards)
     .innerJoin(sentences, eq(cards.sentenceId, sentences.id))
-    .where(eq(cards.status, "ready"))
-    .orderBy(asc(cards.createdAt))
+    .where(and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents)))
+    .orderBy(asc(cards.createdAt), asc(cards.id))
     .limit(1)
 
   if (!row) return null
 
-  return toPublicReadyCard(row)
+  return toPublicReadyCard(row as ReadyCardRow)
 }

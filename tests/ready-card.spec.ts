@@ -1,13 +1,18 @@
 import { expect, test } from "@playwright/test"
 
+import { seedReadyCard, seedReadyCardStore } from "@/lib/cards/seed-ready-card"
+import { createDatabaseClient } from "@/lib/db/client"
+
 import type { ReadyCardResponse } from "@/lib/cards/public-ready-card"
 
+const e2eDatabasePath = "test-data/e2e/juhua.sqlite"
+
 const seedCard = {
-  id: "seed-quiet-gallery-card",
-  sentence: "风停在窗边，像一封没有署名的信。",
-  sceneLabel: "晨光里的窗边小路",
-  accent: "dawn",
-  status: "ready",
+  id: seedReadyCard.card.id,
+  sentence: seedReadyCard.sentence.text,
+  sceneLabel: seedReadyCard.card.sceneLabel,
+  accent: seedReadyCard.card.accent,
+  status: seedReadyCard.card.status,
 } as const
 
 function isReadyCardResponse(value: unknown): value is ReadyCardResponse {
@@ -24,6 +29,25 @@ function isReadyCardResponse(value: unknown): value is ReadyCardResponse {
     typeof card.accent === "string" &&
     typeof card.status === "string"
   )
+}
+
+async function rerunSeedReadyCardStore() {
+  const previousDatabasePath = process.env.JUHUA_DATABASE_PATH
+  process.env.JUHUA_DATABASE_PATH = e2eDatabasePath
+
+  const client = createDatabaseClient()
+
+  try {
+    await seedReadyCardStore(client)
+  } finally {
+    client.sqlite.close()
+
+    if (previousDatabasePath === undefined) {
+      delete process.env.JUHUA_DATABASE_PATH
+    } else {
+      process.env.JUHUA_DATABASE_PATH = previousDatabasePath
+    }
+  }
 }
 
 async function expectSeedReadyCard(responseBody: unknown) {
@@ -51,6 +75,8 @@ test("keeps seeding idempotent for the public ready card", async ({ request }) =
   const before = await request.get("/api/ready-card")
   expect(before.status()).toBe(200)
   const beforeBody = await before.json()
+
+  await rerunSeedReadyCardStore()
 
   const after = await request.get("/api/ready-card")
   expect(after.status()).toBe(200)

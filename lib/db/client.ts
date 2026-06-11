@@ -6,6 +6,8 @@ import { drizzle } from "drizzle-orm/sqlite-proxy"
 
 import * as schema from "./schema"
 
+import type { RemoteCallback } from "drizzle-orm/sqlite-proxy"
+
 export function resolveDatabasePath() {
   const configuredPath = process.env.JUHUA_DATABASE_PATH
 
@@ -16,28 +18,52 @@ export function resolveDatabasePath() {
   return join(process.cwd(), "data", "juhua.sqlite")
 }
 
+export function ensureDatabaseDirectory(databasePath = resolveDatabasePath()) {
+  mkdirSync(dirname(databasePath), { recursive: true })
+}
+
 export function createDatabaseClient() {
   const databasePath = resolveDatabasePath()
-  mkdirSync(dirname(databasePath), { recursive: true })
+  ensureDatabaseDirectory(databasePath)
 
   const sqlite = new DatabaseSync(databasePath)
   sqlite.exec("PRAGMA journal_mode = WAL")
 
+  const query: RemoteCallback = async (sql, params, method) => {
+    const statement = sqlite.prepare(sql)
+    statement.setReturnArrays(true)
+
+    if (method === "run") {
+      statement.run(...params)
+      return { rows: [] }
+    }
+
+    if (method === "get") {
+      const row = statement.get(...params) as unknown[] | undefined
+      return { rows: row ? row : [] }
+    }
+
+    return { rows: statement.all(...params) as unknown as unknown[][] }
+  }
+
   const db = drizzle(
-    async (sql, params, method) => {
-      const statement = sqlite.prepare(sql)
+    query,
+    async (batch) => {
+      sqlite.exec("BEGIN")
 
-      if (method === "run") {
-        statement.run(...params)
-        return { rows: [] }
+      try {
+        const results = []
+
+        for (const item of batch) {
+          results.push(await query(item.sql, item.params, item.method))
+        }
+
+        sqlite.exec("COMMIT")
+        return results
+      } catch (error) {
+        sqlite.exec("ROLLBACK")
+        throw error
       }
-
-      if (method === "get") {
-        const row = statement.get(...params)
-        return { rows: row ? Object.values(row) : [] }
-      }
-
-      return { rows: statement.all(...params).map((row) => Object.values(row)) }
     },
     { schema }
   )

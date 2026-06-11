@@ -25,30 +25,32 @@ export const seedReadyCard = {
 } as const
 
 export async function seedReadyCardStore(client: DatabaseClient) {
-  await client.db
-    .insert(sentences)
-    .values(seedReadyCard.sentence)
-    .onConflictDoUpdate({
-      target: sentences.id,
-      set: {
-        text: seedReadyCard.sentence.text,
-        source: seedReadyCard.sentence.source,
-      },
-    })
+  await client.db.transaction(async (tx) => {
+    await tx
+      .insert(sentences)
+      .values(seedReadyCard.sentence)
+      .onConflictDoUpdate({
+        target: sentences.id,
+        set: {
+          text: seedReadyCard.sentence.text,
+          source: seedReadyCard.sentence.source,
+        },
+      })
 
-  await client.db
-    .insert(cards)
-    .values(seedReadyCard.card)
-    .onConflictDoUpdate({
-      target: cards.id,
-      set: {
-        sentenceId: seedReadyCard.card.sentenceId,
-        status: seedReadyCard.card.status,
-        sceneLabel: seedReadyCard.card.sceneLabel,
-        accent: seedReadyCard.card.accent,
-        illustrationPath: seedReadyCard.card.illustrationPath,
-        styleVersion: seedReadyCard.card.styleVersion,
-        updatedAt: seedReadyCard.card.updatedAt,
-      },
-    })
+    await tx
+      .insert(cards)
+      .values(seedReadyCard.card)
+      .onConflictDoUpdate({
+        target: cards.id,
+        set: {
+          sentenceId: seedReadyCard.card.sentenceId,
+          status: seedReadyCard.card.status,
+          sceneLabel: seedReadyCard.card.sceneLabel,
+          accent: seedReadyCard.card.accent,
+          illustrationPath: seedReadyCard.card.illustrationPath,
+          styleVersion: seedReadyCard.card.styleVersion,
+          updatedAt: seedReadyCard.card.updatedAt,
+        },
+      })
+  })
 }

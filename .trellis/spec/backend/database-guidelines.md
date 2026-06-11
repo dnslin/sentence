@@ -19,6 +19,10 @@ SQLite row → Drizzle repository → PublicReadyCard DTO → GET /api/ready-car
 
 ### 2. Signatures
 
+**Runtime**
+
+- Node.js `>=22.17.0` is required because the ready-card database path uses `node:sqlite` and `StatementSync#setReturnArrays(true)`.
+
 **Environment key**
 
 - `JUHUA_DATABASE_PATH?: string` — optional local SQLite file path.
@@ -31,7 +35,10 @@ SQLite row → Drizzle repository → PublicReadyCard DTO → GET /api/ready-car
   "db:generate": "drizzle-kit generate",
   "db:migrate": "tsx scripts/migrate.ts",
   "db:seed": "tsx scripts/seed-ready-card.ts",
-  "db:setup": "pnpm db:migrate && pnpm db:seed"
+  "db:setup": "pnpm db:migrate && pnpm db:seed",
+  "dev": "pnpm db:setup && next dev",
+  "start": "pnpm db:setup && next start",
+  "test:e2e": "playwright test"
 }
 ```
 
@@ -49,7 +56,7 @@ try {
 **Tables**
 
 - `sentences(id text primary key, text text, source text, created_at integer)`.
-- `cards(id text primary key, sentence_id text, status text, scene_label text, accent text, illustration_path text nullable, style_version text, created_at integer, updated_at integer)`.
+- `cards(id text primary key, sentence_id text, status text check(status in ('ready')), scene_label text, accent text check(accent in ('dawn','rain','moon')), illustration_path text nullable, style_version text, created_at integer, updated_at integer)` with `cards_ready_lookup_idx(status, created_at, id)`.
 
 **Public API**
 
@@ -72,10 +79,10 @@ type ReadyCardResponse = {
 
 - SQLite WAL must be enabled on the actual runtime SQLite connection with `PRAGMA journal_mode = WAL` before Drizzle queries run.
 - Runtime reads and seed/upsert writes must use Drizzle APIs through the shared client; raw SQL is allowed only for the migration runner that applies committed SQL files.
-- Current Drizzle package access uses `drizzle-orm/sqlite-proxy` with a `DatabaseSync` adapter because the installed `drizzle-orm@0.45.2` does not expose `drizzle-orm/node-sqlite` in this project.
+- Current Drizzle package access uses `drizzle-orm/sqlite-proxy` with a `DatabaseSync` adapter because the installed `drizzle-orm@0.45.2` does not expose `drizzle-orm/node-sqlite` in this project; the adapter must return array rows in SQL selected-column order via `statement.setReturnArrays(true)`.
 - Migration SQL files live under `drizzle/` and are committed.
 - Local SQLite files are ignored (`data/*.sqlite*`, `data/*.db*`, `test-data/`); migrations are not ignored.
-- The seed must be idempotent: repeated `pnpm db:seed` must not create duplicate user-visible cards.
+- The seed must be idempotent and transactional: repeated `pnpm db:seed` must not create duplicate user-visible cards or leave sentence/card rows half-updated.
 - UI code must consume `PublicReadyCard` / `ReadyCardResponse` from `lib/cards/public-ready-card.ts`; it must not parse database rows or duplicate API payload types.
 - The homepage may load the shared server-side repository directly in a Server Component; it does not need to HTTP-fetch its own `/api/ready-card` route.
 
@@ -85,12 +92,12 @@ type ReadyCardResponse = {
 | --- | --- |
 | `JUHUA_DATABASE_PATH` missing | Use `process.cwd()/data/juhua.sqlite`. |
 | Database parent directory missing | Create it before opening SQLite. |
-| Local DB missing tables | `pnpm db:migrate` creates schema from committed migrations. |
+| Local DB missing tables | `pnpm dev` and `pnpm start` run `pnpm db:setup` before serving; `pnpm db:migrate` creates schema from committed migrations. |
 | Seed run repeatedly | Existing sentence/card rows are updated by primary key, not duplicated. |
 | Runtime connection opens | Execute WAL pragma on that connection. |
 | Ready card missing from API | Return `404` with `error: "ready_card_not_found"`. |
 | Ready card missing from homepage | Fail clearly and instruct local setup (`pnpm db:setup`); do not silently fall back to frontend mock data. |
-| Row has unknown `status` or `accent` | Throw at the repository/DTO boundary before returning public data. |
+| Row has unknown `status` or `accent` | DB constraints reject new invalid rows; repository filters existing corrupt rows as unavailable before returning public data. |
 
 > **Warning**: `node:sqlite` emits an ExperimentalWarning on Node 22. This is expected for the current local runtime and is not by itself a failing check when commands pass.
 
