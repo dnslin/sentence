@@ -33,9 +33,11 @@ Current public copy should stay truthful: refresh/download/share are still place
 
 - This is a Next.js 16 App Router project using React 19, TypeScript strict mode, pnpm, Tailwind CSS v4, shadcn UI, and next-themes.
 - `app/layout.tsx` sets Chinese metadata, imports `app/globals.css`, and wraps all routes in `components/theme-provider.tsx`.
-- `/` is implemented by `app/page.tsx` -> `HomeExperience` -> `HomeCardExperience` -> `QuietGalleryCard`.
-  - `app/home-card-source.ts` holds the local mock card data.
-  - `HomeCardExperience` is the client state boundary for cycling mock cards and announcing placeholder actions.
+- `/` is implemented by `app/page.tsx` loading one ready card from the server data path, then `HomeExperience` -> `HomeCardExperience` -> `QuietGalleryCard`.
+  - `lib/db/` owns the local SQLite schema/client, with WAL enabled at runtime.
+  - `lib/cards/` owns the ready-card DTO, repository mapping, and stable seed data.
+  - `app/api/ready-card/route.ts` exposes the public `{ card: ... }` ready-card API.
+  - `HomeCardExperience` is the client state boundary for placeholder action announcements.
   - `QuietGalleryCard` is the reusable visual card renderer for the current quiet-gallery direction.
 - `/prototype` is a throwaway comparison route for three UI directions: `quiet-gallery`, `immersive-stage`, and `paper-desk`.
   - Query handling is client-side via `useSearchParams().getAll("variant")` inside a `Suspense` boundary so the route can remain static.
