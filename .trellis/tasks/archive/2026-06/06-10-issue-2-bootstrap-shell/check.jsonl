@@ -1,5 +1,5 @@
-{"kind":"spec","path":".trellis/tasks/06-10-issue-2-bootstrap-shell/prd.md","reason":"Acceptance criteria to verify"}
-{"kind":"spec","path":".trellis/tasks/06-10-issue-2-bootstrap-shell/design.md","reason":"Route and production contracts to audit"}
-{"kind":"spec","path":".trellis/tasks/06-10-issue-2-bootstrap-shell/implement.md","reason":"Validation commands and TDD gap-fix rule"}
+{"kind":"spec","path":".trellis/tasks/archive/2026-06/06-10-issue-2-bootstrap-shell/prd.md","reason":"Acceptance criteria to verify"}
+{"kind":"spec","path":".trellis/tasks/archive/2026-06/06-10-issue-2-bootstrap-shell/design.md","reason":"Route and production contracts to audit"}
+{"kind":"spec","path":".trellis/tasks/archive/2026-06/06-10-issue-2-bootstrap-shell/implement.md","reason":"Validation commands and TDD gap-fix rule"}
 {"kind":"reference","path":".trellis/spec/frontend/type-safety.md","reason":"Expected query handling checks"}
 {"kind":"reference","path":".trellis/spec/frontend/quality-guidelines.md","reason":"Expected production switcher exclusion checks"}

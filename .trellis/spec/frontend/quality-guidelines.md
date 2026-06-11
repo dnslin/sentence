@@ -67,6 +67,69 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 
 ---
 
+## Mock and Debug Route States
+
+### Contract: production public routes must not expose false states
+
+**Scope / Trigger**: Any production-facing route that can render loading, empty, error, or debug-only states that are not backed by real product data or real runtime failures.
+
+**Signature**:
+
+```tsx
+const showDebugState = process.env.NODE_ENV !== "production"
+
+export function Page() {
+  return <PublicExperience />
+}
+```
+
+**Contracts**:
+
+- Public URLs must not let external users force mock-only `loading`, `empty`, or `error` states on production-facing routes.
+- If debug state selection is needed, gate it behind a non-production-only seam or move it to a dedicated prototype/debug route.
+- Production-facing route copy must distinguish placeholder behavior from implemented product behavior.
+- Safe defaults must render truthful public content when a public route receives unknown, repeated, or unsupported query values.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Public route receives `?state=error` for a mock-only state | Ignore it or route to a non-production-only debug seam; do not render a false production error. |
+| Public route receives repeated state values | Treat as unsupported and render the documented public default. |
+| Non-production debug seam is enabled | Debug state may render if it is visibly separate from product content. |
+| Production output contains debug/mock controls or copy implying fake failures | Failing check; remove or gate the debug behavior. |
+
+**Good/Base/Bad Cases**:
+
+- Good: `/` ignores `?state=error` when no real backend or data failure exists.
+- Base: `/prototype?variant=paper-desk` selects a documented prototype variant on the prototype route.
+- Bad: `/?state=empty` renders an empty-stock message before a real stock source exists.
+
+**Tests Required**:
+
+- Browser or route-level checks for public routes must cover unsupported debug query values when a prior implementation exposed them.
+- Production build/server checks must confirm debug or prototype affordances are absent from the public route.
+- If debug state remains in non-production, verify the gate and document how to access it.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```tsx
+const state = useSearchParams().get("state")
+return state === "error" ? <MockError /> : <PublicExperience />
+```
+
+#### Correct
+
+```tsx
+export function PublicPage() {
+  return <PublicExperience />
+}
+```
+
+---
+
 ## Development Dev-Resource Origins
 
 ### Contract: browser automation origins must be explicit
@@ -165,14 +228,14 @@ const transform = styles.transform
 
 | Condition | Required behavior |
 | --- | --- |
-| Default motion uses `motion-safe:-rotate-1` | Computed `rotate` may be `-1deg` while computed `transform` remains `none`. |
-| Reduced motion uses `motion-reduce:transition-none` and no `motion-safe` transform applies | Computed `transitionDuration` is `0s` and computed `rotate` is neutral. |
+| Default motion uses a `motion-safe` transform utility | The relevant computed property may be non-neutral while computed `transform` remains `none`. |
+| Reduced motion neutralizes non-essential motion | Computed `transitionDuration` is `0s` or otherwise non-animated, and the relevant transform property is neutral. |
 | A check only asserts `transform !== "none"` for Tailwind rotate utilities | Treat as an invalid check; it can false-fail when rotate is emitted separately. |
 | A check only asserts `transform === "none"` under reduced motion | Incomplete; also inspect `rotate`, `scale`, or `translate` when those utilities are used. |
 
 **Good/Base/Bad Cases**:
 
-- Good: after clicking a refresh control, default motion reports `transitionDuration: "0.5s"` and `rotate: "-1deg"`; reduced motion reports `transitionDuration: "0s"` and `rotate: "none"`.
+- Good: after triggering a refresh control, default motion reports a non-neutral emitted transform property such as `rotate`, `scale`, `translate`, or `transform`; reduced motion reports non-animated transition timing and neutral emitted transform properties.
 - Base: components without transform utilities only check transition duration or visible behavior.
 - Bad: failing a valid Tailwind rotate animation because `getComputedStyle(element).transform` is `none`.
 

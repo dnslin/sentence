@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/prd.md", "reason": "Task requirements, constraints, and acceptance criteria"}
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/design.md", "reason": "Module shape, seams, risks, and requirement-driven test scenarios"}
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/implement.md", "reason": "Execution order, validation commands, and rollback points"}
+{"file": "CONTEXT.md", "reason": "Domain vocabulary for 图文卡片, 一言, 图文绑定, 刷新生成, 随机短句, 非署名绘本风"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Future pool availability constraint for homepage seam design"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "Future SQLite/WebP constraint for homepage seam design"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Search parameter and frontend type-safety expectations"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Route, accessibility, reduced-motion, semantic, and build quality contracts"}
