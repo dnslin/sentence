@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend spec index for checking ready-card API/database changes."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify SQLite/Drizzle ready-card contracts, migrations, and public API behavior."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend spec index for checking browser-visible route behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify refresh UI, reduced-motion-safe transition, copy truthfulness, and public route checks."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify strict TypeScript and Next.js 16 request boundary usage."}
+{"file":".trellis/tasks/06-11-refresh-flow-recent-card-avoidance/research/next-request-identity.md","reason":"Check implementation against researched Next.js 16 request identity API behavior."}
