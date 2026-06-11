@@ -76,3 +76,103 @@ Fixed and optimized the Juhua Slice 01 prototype route after code review: restor
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Verify Issue 2 prototype URLs
+
+**Date**: 2026-06-10
+**Task**: Verify Issue 2 prototype URLs
+**Branch**: `feat/issue-2-bootstrap-shell`
+
+### Summary
+
+Created a verification-only Trellis task for closed GitHub issue #2, confirmed the existing Slice 01 /prototype route across default, valid, invalid, repeated, development-switcher, and production-switcher-exclusion browser scenarios with agent-browser, found no implementation gaps, and archived the task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7b4a4f9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 4: Issue 3 Quiet Gallery homepage
+
+**Date**: 2026-06-10
+**Task**: Issue 3 Quiet Gallery homepage
+**Branch**: `issue-3-quiet-gallery-homepage`
+
+### Summary
+
+Implemented the selected Quiet Gallery public homepage with local mock card data, accessible mock controls, query-driven visual states, responsive and reduced-motion checks, plus frontend reduced-motion verification guidance.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7472a18` | (see git log) |
+| `97c06bb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 5: Finish PR #19 homepage review fixes
+
+**Date**: 2026-06-11
+**Task**: Finish PR #19 homepage review fixes
+**Branch**: `issue-3-quiet-gallery-homepage`
+
+### Summary
+
+Resolved PR #19 homepage review findings: removed public mock state query handling and interactive fallback, split homepage card modules, fixed repeated action announcements, updated frontend quality guidance, and corrected archived Trellis manifest paths.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d51fa23` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

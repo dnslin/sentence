@@ -67,6 +67,69 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 
 ---
 
+## Mock and Debug Route States
+
+### Contract: production public routes must not expose false states
+
+**Scope / Trigger**: Any production-facing route that can render loading, empty, error, or debug-only states that are not backed by real product data or real runtime failures.
+
+**Signature**:
+
+```tsx
+const showDebugState = process.env.NODE_ENV !== "production"
+
+export function Page() {
+  return <PublicExperience />
+}
+```
+
+**Contracts**:
+
+- Public URLs must not let external users force mock-only `loading`, `empty`, or `error` states on production-facing routes.
+- If debug state selection is needed, gate it behind a non-production-only seam or move it to a dedicated prototype/debug route.
+- Production-facing route copy must distinguish placeholder behavior from implemented product behavior.
+- Safe defaults must render truthful public content when a public route receives unknown, repeated, or unsupported query values.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Public route receives `?state=error` for a mock-only state | Ignore it or route to a non-production-only debug seam; do not render a false production error. |
+| Public route receives repeated state values | Treat as unsupported and render the documented public default. |
+| Non-production debug seam is enabled | Debug state may render if it is visibly separate from product content. |
+| Production output contains debug/mock controls or copy implying fake failures | Failing check; remove or gate the debug behavior. |
+
+**Good/Base/Bad Cases**:
+
+- Good: `/` ignores `?state=error` when no real backend or data failure exists.
+- Base: `/prototype?variant=paper-desk` selects a documented prototype variant on the prototype route.
+- Bad: `/?state=empty` renders an empty-stock message before a real stock source exists.
+
+**Tests Required**:
+
+- Browser or route-level checks for public routes must cover unsupported debug query values when a prior implementation exposed them.
+- Production build/server checks must confirm debug or prototype affordances are absent from the public route.
+- If debug state remains in non-production, verify the gate and document how to access it.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```tsx
+const state = useSearchParams().get("state")
+return state === "error" ? <MockError /> : <PublicExperience />
+```
+
+#### Correct
+
+```tsx
+export function PublicPage() {
+  return <PublicExperience />
+}
+```
+
+---
+
 ## Development Dev-Resource Origins
 
 ### Contract: browser automation origins must be explicit
@@ -135,6 +198,67 @@ const nextConfig = {
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
 }
+```
+
+---
+
+## Reduced Motion Browser Checks
+
+### Contract: inspect individual transform properties
+
+**Scope / Trigger**: Any browser-observable check that verifies Tailwind CSS transform or animation behavior, especially `prefers-reduced-motion` handling.
+
+**Signature**:
+
+```typescript
+const styles = getComputedStyle(element)
+const duration = styles.transitionDuration
+const rotate = styles.rotate
+const transform = styles.transform
+```
+
+**Contracts**:
+
+- Tailwind CSS may emit individual transform properties such as `rotate`, `scale`, or `translate` rather than a matrix-valued `transform` property.
+- A reduced-motion check must inspect the individual property that the implementation uses, not only `transform`.
+- Reduced-motion behavior passes only when non-essential transition duration is `0s` and the relevant transform property is neutral, such as `rotate === "none"` or `rotate === "0deg"`.
+- Default-motion behavior may be verified with either visible movement or computed styles, but the assertion must target the emitted property.
+
+**Validation & Error Matrix**:
+
+| Condition | Required behavior |
+| --- | --- |
+| Default motion uses a `motion-safe` transform utility | The relevant computed property may be non-neutral while computed `transform` remains `none`. |
+| Reduced motion neutralizes non-essential motion | Computed `transitionDuration` is `0s` or otherwise non-animated, and the relevant transform property is neutral. |
+| A check only asserts `transform !== "none"` for Tailwind rotate utilities | Treat as an invalid check; it can false-fail when rotate is emitted separately. |
+| A check only asserts `transform === "none"` under reduced motion | Incomplete; also inspect `rotate`, `scale`, or `translate` when those utilities are used. |
+
+**Good/Base/Bad Cases**:
+
+- Good: after triggering a refresh control, default motion reports a non-neutral emitted transform property such as `rotate`, `scale`, `translate`, or `transform`; reduced motion reports non-animated transition timing and neutral emitted transform properties.
+- Base: components without transform utilities only check transition duration or visible behavior.
+- Bad: failing a valid Tailwind rotate animation because `getComputedStyle(element).transform` is `none`.
+
+**Tests Required**:
+
+- Browser checks for reduced-motion features must emulate `prefers-reduced-motion: reduce` and assert the actual computed property used by the class (`rotate`, `scale`, `translate`, or `transform`).
+- If default motion is part of the behavior contract, also verify the default media mode so the reduced-motion assertion is not vacuous.
+
+**Wrong vs Correct**:
+
+#### Wrong
+
+```typescript
+const styles = getComputedStyle(card)
+expect(styles.transform).not.toBe("none")
+```
+
+#### Correct
+
+```typescript
+const styles = getComputedStyle(card)
+expect(styles.transitionDuration).toBe("0s")
+expect(["none", "0deg"]).toContain(styles.rotate)
 ```
 
 ---

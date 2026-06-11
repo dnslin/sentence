@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/prd.md", "reason": "Acceptance criteria to verify"}
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/design.md", "reason": "Architecture contracts and risks to audit"}
+{"file": ".trellis/tasks/06-10-pr19-homepage-review-fixes/implement.md", "reason": "Validation commands and expected execution sequence"}
+{"file": "CONTEXT.md", "reason": "Domain vocabulary and out-of-scope product concepts"}
+{"file": "docs/adr/0002-hybrid-pregenerated-card-pool.md", "reason": "Verify homepage seam does not conflict with pregenerated pool decision"}
+{"file": "docs/adr/0003-sqlite-and-local-webp-storage.md", "reason": "Verify homepage seam does not leak future storage details"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Check query/state normalization expectations"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Check accessibility, semantic HTML, reduced-motion, and browser-visible criteria"}
