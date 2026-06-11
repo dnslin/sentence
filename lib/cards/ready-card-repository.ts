@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, notInArray } from "drizzle-orm"
 
 import {
   isReadyCardAccent,
@@ -14,6 +14,8 @@ import { cards, readyCardViews, sentences } from "@/lib/db/schema"
 import type { DatabaseClient } from "@/lib/db/client"
 
 const recentWindowSize = 50
+const readyPoolLimit = 200
+const retainedViewsPerVisitor = recentWindowSize * 3
 
 type ReadyCardRow = {
   id: string
@@ -29,6 +31,7 @@ type ValidReadyCardRow = ReadyCardRow & {
 }
 
 type ViewRow = {
+  id: string
   cardId: string
   seenAt: Date
 }
@@ -49,11 +52,11 @@ function toPublicReadyCard(row: ValidReadyCardRow): PublicReadyCard {
 
 function selectLeastRecentlySeenCard(
   cardsToSelect: ValidReadyCardRow[],
-  recentViews: ViewRow[]
+  latestViews: ViewRow[]
 ) {
   const latestSeenAtByCard = new Map<string, number>()
 
-  for (const view of recentViews) {
+  for (const view of latestViews) {
     if (latestSeenAtByCard.has(view.cardId)) continue
     latestSeenAtByCard.set(view.cardId, view.seenAt.getTime())
   }
@@ -69,10 +72,7 @@ function selectLeastRecentlySeenCard(
   })[0]
 }
 
-export async function getNextReadyCardForVisitor(
-  client: DatabaseClient,
-  context: ReadyCardRequestContext
-): Promise<PublicReadyCard | null> {
+async function loadReadyCards(client: DatabaseClient) {
   const rows = await client.db
     .select({
       id: cards.id,
@@ -83,20 +83,68 @@ export async function getNextReadyCardForVisitor(
     })
     .from(cards)
     .innerJoin(sentences, eq(cards.sentenceId, sentences.id))
-    .where(
-      and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents))
-    )
+    .where(and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents)))
     .orderBy(asc(cards.createdAt), asc(cards.id))
+    .limit(readyPoolLimit)
 
-  const readyCards = rows.filter(isValidReadyCardRow)
+  return rows.filter(isValidReadyCardRow)
+}
+
+async function loadRecentViews(client: DatabaseClient, visitorKey: string) {
+  return client.db
+    .select({
+      id: readyCardViews.id,
+      cardId: readyCardViews.cardId,
+      seenAt: readyCardViews.seenAt,
+    })
+    .from(readyCardViews)
+    .where(eq(readyCardViews.visitorKey, visitorKey))
+    .orderBy(desc(readyCardViews.seenAt), desc(readyCardViews.id))
+    .limit(retainedViewsPerVisitor)
+}
+
+async function pruneVisitorViews(client: DatabaseClient, visitorKey: string) {
+  const retainedRows = await client.db
+    .select({ id: readyCardViews.id })
+    .from(readyCardViews)
+    .where(eq(readyCardViews.visitorKey, visitorKey))
+    .orderBy(desc(readyCardViews.seenAt), desc(readyCardViews.id))
+    .limit(retainedViewsPerVisitor)
+
+  if (retainedRows.length < retainedViewsPerVisitor) return
+
+  await client.db
+    .delete(readyCardViews)
+    .where(
+      and(
+        eq(readyCardViews.visitorKey, visitorKey),
+        notInArray(
+          readyCardViews.id,
+          retainedRows.map((row) => row.id)
+        )
+      )
+    )
+}
+
+async function getNextReadyCardForVisitorInTransaction(
+  client: DatabaseClient,
+  context: ReadyCardRequestContext
+) {
+  const now = Date.now()
+
+  await client.db
+    .delete(readyCardViews)
+    .where(
+      and(
+        eq(readyCardViews.visitorKey, context.visitorKey),
+        gt(readyCardViews.seenAt, new Date(now + 60_000))
+      )
+    )
+
+  const readyCards = await loadReadyCards(client)
   if (readyCards.length === 0) return null
 
-  const recentViews = await client.db
-    .select({ cardId: readyCardViews.cardId, seenAt: readyCardViews.seenAt })
-    .from(readyCardViews)
-    .where(eq(readyCardViews.visitorKey, context.visitorKey))
-    .orderBy(desc(readyCardViews.seenAt), desc(readyCardViews.id))
-
+  const recentViews = await loadRecentViews(client, context.visitorKey)
   const recentWindowCardIds = new Set(
     recentViews.slice(0, recentWindowSize).map((view) => view.cardId)
   )
@@ -109,8 +157,8 @@ export async function getNextReadyCardForVisitor(
 
   if (!selected) return null
 
-  const latestSeenAt = recentViews[0]?.seenAt.getTime() ?? 0
-  const nextSeenAt = new Date(Math.max(Date.now(), latestSeenAt + 1))
+  const latestSeenAt = Math.min(recentViews[0]?.seenAt.getTime() ?? 0, now)
+  const nextSeenAt = new Date(Math.max(now, latestSeenAt + 1))
 
   await client.db.insert(readyCardViews).values({
     id: randomUUID(),
@@ -118,6 +166,23 @@ export async function getNextReadyCardForVisitor(
     cardId: selected.id,
     seenAt: nextSeenAt,
   })
+  await pruneVisitorViews(client, context.visitorKey)
 
   return toPublicReadyCard(selected)
+}
+
+export async function getNextReadyCardForVisitor(
+  client: DatabaseClient,
+  context: ReadyCardRequestContext
+): Promise<PublicReadyCard | null> {
+  client.sqlite.exec("BEGIN IMMEDIATE")
+
+  try {
+    const card = await getNextReadyCardForVisitorInTransaction(client, context)
+    client.sqlite.exec("COMMIT")
+    return card
+  } catch (error) {
+    client.sqlite.exec("ROLLBACK")
+    throw error
+  }
 }

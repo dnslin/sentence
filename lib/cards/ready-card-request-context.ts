@@ -9,6 +9,7 @@ export { anonymousCookieName }
 
 export type ReadyCardRequestContext = {
   visitorKey: string
+  requestContextKey: string
 }
 
 type HeaderReader = {
@@ -38,9 +39,10 @@ export function createReadyCardRequestContext({
   const safeAnonymousId =
     anonymousId && isValidAnonymousId(anonymousId) ? anonymousId : "missing"
   const ipContext = normalizeIpContext(headersList)
-  const visitorKey = createHash("sha256")
+  const visitorKey = createHash("sha256").update(safeAnonymousId).digest("hex")
+  const requestContextKey = createHash("sha256")
     .update(`${safeAnonymousId}:${ipContext}`)
     .digest("hex")
 
-  return { visitorKey }
+  return { visitorKey, requestContextKey }
 }

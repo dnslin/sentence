@@ -24,6 +24,16 @@ function buildCookieHeader(
   )
 }
 
+function shouldUseSecureCookie(request: NextRequest) {
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase()
+
+  return request.nextUrl.protocol === "https:" || forwardedProto === "https"
+}
+
 export function proxy(request: NextRequest) {
   const currentAnonymousId = request.cookies.get(anonymousCookieName)?.value
 
@@ -45,7 +55,7 @@ export function proxy(request: NextRequest) {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: request.nextUrl.protocol === "https:",
+    secure: shouldUseSecureCookie(request),
   })
 
   return response

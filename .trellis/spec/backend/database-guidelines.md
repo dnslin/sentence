@@ -57,6 +57,7 @@ try {
 
 - `sentences(id text primary key, text text, source text, created_at integer)`.
 - `cards(id text primary key, sentence_id text, status text check(status in ('ready')), scene_label text, accent text check(accent in ('dawn','rain','moon')), illustration_path text nullable, style_version text, created_at integer, updated_at integer)` with `cards_ready_lookup_idx(status, created_at, id)`.
+- `ready_card_views(id text primary key, visitor_key text, card_id text references cards(id), seen_at integer)` with `ready_card_views_recent_idx(visitor_key, seen_at)` and `ready_card_views_card_idx(visitor_key, card_id, seen_at)`.
 
 **Public API**
 
@@ -78,6 +79,7 @@ type ReadyCardResponse = {
 ### 3. Contracts
 
 - SQLite WAL must be enabled on the actual runtime SQLite connection with `PRAGMA journal_mode = WAL` before Drizzle queries run.
+- SQLite foreign keys must be enabled on every runtime connection with `PRAGMA foreign_keys = ON`; declared references such as `ready_card_views.card_id -> cards.id` are otherwise not enforced by SQLite.
 - Runtime reads and seed/upsert writes must use Drizzle APIs through the shared client; raw SQL is allowed only for the migration runner that applies committed SQL files.
 - Current Drizzle package access uses `drizzle-orm/sqlite-proxy` with a `DatabaseSync` adapter because the installed `drizzle-orm@0.45.2` does not expose `drizzle-orm/node-sqlite` in this project; the adapter must return array rows in SQL selected-column order via `statement.setReturnArrays(true)`.
 - Migration SQL files live under `drizzle/` and are committed.
@@ -94,7 +96,7 @@ type ReadyCardResponse = {
 | Database parent directory missing | Create it before opening SQLite. |
 | Local DB missing tables | `pnpm dev` and `pnpm start` run `pnpm db:setup` before serving; `pnpm db:migrate` creates schema from committed migrations. |
 | Seed run repeatedly | Existing sentence/card rows are updated by primary key, not duplicated. |
-| Runtime connection opens | Execute WAL pragma on that connection. |
+| Runtime connection opens | Execute WAL and foreign-key pragmas on that connection. |
 | Ready card missing from API | Return `404` with `error: "ready_card_not_found"`. |
 | Ready card missing from homepage | Fail clearly and instruct local setup (`pnpm db:setup`); do not silently fall back to frontend mock data. |
 | Row has unknown `status` or `accent` | DB constraints reject new invalid rows; repository filters existing corrupt rows as unavailable before returning public data. |
@@ -115,6 +117,7 @@ For changes to this path, add or update behavior tests that assert:
 - `GET /api/ready-card` returns HTTP `200` and exactly the public `{ card: ... }` shape for the seeded ready card.
 - `/` visibly renders the seeded sentence and scene label through public DOM queries.
 - Repeated seed/setup access keeps the public ready-card response stable.
+- Runtime SQLite connections enforce `ready_card_views.card_id` foreign keys.
 - `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
 
 Tests should verify public API/browser behavior, not private repository implementation details.
@@ -186,7 +189,7 @@ proxy.ts anonymous cookie
 
 - Name: `juhua_anonymous_id`
 - Value: UUID string validated before use
-- Options: `httpOnly`, `sameSite: "lax"`, `path: "/"`, `secure` only on HTTPS
+- Options: `httpOnly`, `sameSite: "lax"`, `path: "/"`, `secure` when the direct request URL is HTTPS or trusted forwarded proto is HTTPS
 - Lifetime: session cookie unless a future product decision adds retention
 
 **Request context**
@@ -194,6 +197,7 @@ proxy.ts anonymous cookie
 ```typescript
 type ReadyCardRequestContext = {
   visitorKey: string
+  requestContextKey: string
 }
 
 function createReadyCardRequestContext(input: {
@@ -201,6 +205,8 @@ function createReadyCardRequestContext(input: {
   headersList: { get(name: string): string | null }
 }): ReadyCardRequestContext
 ```
+
+`visitorKey` is the stable recent-window key derived from the anonymous cookie only. `requestContextKey` may include normalized IP context (`x-forwarded-for` first token, then `x-real-ip`, then `unknown`) for server-side request context, but IP changes must not reset the recent-card window for a valid anonymous cookie.
 
 **Selection API**
 
@@ -232,11 +238,15 @@ Required indexes:
 - `proxy.ts` must match `/` and `/api/ready-card` so the first server-rendered homepage card and later API refreshes share identity.
 - If the anonymous cookie is missing or invalid, `proxy.ts` must mint a UUID, remove any stale cookie with the same name from the forwarded `Cookie` header, forward the minted cookie to the downstream request, and set it on the response.
 - `proxy.ts` must not import modules that depend on Node-only APIs; shared cookie-name/validation helpers used by proxy must be edge-safe.
-- Server request context must derive `visitorKey` from the anonymous cookie plus normalized request IP context (`x-forwarded-for` first token, then `x-real-ip`, then `unknown`) and store only the hash, not raw cookie/IP values.
+- The cookie `secure` flag must account for reverse-proxy HTTPS (`x-forwarded-proto: https`) as well as direct HTTPS URLs.
 - Homepage and API must call the same selection/recording path; do not keep a separate `getOneReadyCard` path for homepage.
+- Selection and view recording must be atomic for a visitor. In the current SQLite implementation, acquire the write lock before reading recent views, selecting a card, inserting the view, and pruning history (`BEGIN IMMEDIATE` on the same connection).
 - Selection must avoid the visitor's most recent 50 served cards when there is any ready card outside that window.
+- Recent-history reads must be bounded; do not fetch all historical views for a visitor on every request.
+- View rows must have a retention/compaction path. Keep enough rows for the recent window and deterministic fallback, but do not append indefinitely.
 - If all ready cards are in the recent window, selection returns a ready fallback rather than a false empty-stock response.
-- Every returned card from this path must be recorded in `ready_card_views` with a strictly increasing `seen_at` for that visitor to avoid same-millisecond ordering ambiguity.
+- Every returned card from this path must be recorded in `ready_card_views` with a strictly increasing `seen_at` for that visitor without letting stale future-dated rows poison future ordering.
+- Large recent-window test data belongs in test-only fixtures, not in runtime `pnpm db:seed` product content.
 
 ### 4. Validation & Error Matrix
 
@@ -244,18 +254,23 @@ Required indexes:
 | --- | --- |
 | Missing or invalid anonymous cookie | Mint and forward a valid anonymous cookie before page/API selection runs. |
 | Existing invalid cookie plus newly minted cookie | Forward only the valid minted cookie for `juhua_anonymous_id`; do not append behind the invalid value. |
-| Missing IP headers | Use `unknown` as the IP context component. |
+| Public HTTPS request reaches Next through HTTP reverse proxy | Set anonymous cookie with `Secure` when trusted forwarded proto is HTTPS. |
+| Same anonymous cookie with changed IP headers | Keep the same `visitorKey`; IP context must not reset recent-card history. |
+| Same visitor sends concurrent refresh requests | Serialize selection/insert so responses do not choose the same next card from the same recent snapshot. |
 | More than 50 ready cards exist | Do not return any card ID from the same visitor's prior 50 served cards. |
 | All ready cards are inside the prior 50 | Return the least-recent ready fallback, not `ready_card_not_found`. |
+| Visitor has stale future-dated view rows | Clamp or remove stale future rows so new rows do not stay anchored in the future. |
 | No ready cards exist | Return the existing `404 { error: "ready_card_not_found" }` API response or homepage setup error. |
-| Rapid repeated requests share a timestamp millisecond | Persist `seen_at` as greater than that visitor's latest recorded value. |
+| Runtime connection inserts view for missing card | Foreign-key enforcement rejects the write. |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: a visitor loads `/`, clicks `再来一张`, and the API response is selected with the initial homepage card already in the recent window.
+- Good: parallel refreshes for one anonymous visitor are serialized at the selection service and return distinct cards when enough ready cards exist.
 - Base: a fresh API visitor receives the stable first ready card and a `Set-Cookie` header.
 - Base: a second anonymous visitor is not affected by the first visitor's `ready_card_views` rows.
 - Bad: using only `localStorage` or `exclude=currentId`; the server cannot enforce recent-50 behavior or count the server-rendered initial card.
+- Bad: deriving `visitorKey` from IP headers; normal mobile/proxy changes would reset recent-card history.
 - Bad: storing raw cookie values or raw IP addresses in SQLite for this feature.
 
 ### 6. Tests Required
@@ -263,8 +278,12 @@ Required indexes:
 For changes to this path, add or update public API/browser tests that assert:
 
 - `GET /api/ready-card` sets an anonymous cookie for a fresh visitor.
-- With enough seed cards, repeated API calls for one visitor never return an ID from the prior 50 responses.
+- With enough test-only fixture cards, repeated API calls for one visitor never return an ID from the prior 50 responses.
 - A separate anonymous request context starts independently from the first visitor.
+- The same anonymous cookie keeps recent history when `x-forwarded-for` changes.
+- Concurrent refresh/API requests for one visitor return distinct cards when enough ready cards exist.
+- `x-forwarded-proto: https` produces a `Secure` anonymous cookie.
+- Runtime SQLite connections enforce `ready_card_views.card_id` foreign keys.
 - Visiting `/` records the initial card so the next `/api/ready-card` response does not repeat it when enough ready cards exist.
 - No-ready-card API behavior still returns `ready_card_not_found`.
 - `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
@@ -302,4 +321,40 @@ requestHeaders.set(
   "cookie",
   buildCookieHeaderWithoutExistingAnonymousCookie(oldCookie, id)
 )
+```
+
+#### Wrong
+
+```typescript
+// IP changes reset the user's recent-card window.
+const visitorKey = hash(`${anonymousId}:${ipContext}`)
+```
+
+#### Correct
+
+```typescript
+const visitorKey = hash(anonymousId)
+const requestContextKey = hash(`${anonymousId}:${ipContext}`)
+```
+
+#### Wrong
+
+```typescript
+// Race: selection and insertion are separate non-atomic operations.
+const card = await selectNextCard(client, visitorKey)
+await recordReadyCardView(client, visitorKey, card.id)
+```
+
+#### Correct
+
+```typescript
+client.sqlite.exec("BEGIN IMMEDIATE")
+try {
+  const card = await selectAndRecordNextCard(client, visitorKey)
+  client.sqlite.exec("COMMIT")
+  return card
+} catch (error) {
+  client.sqlite.exec("ROLLBACK")
+  throw error
+}
 ```

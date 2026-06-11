@@ -1,14 +1,10 @@
+import { sql } from "drizzle-orm"
+
 import { cards, sentences } from "@/lib/db/schema"
 
 import type { DatabaseClient } from "@/lib/db/client"
 
 const seededAt = new Date("2026-06-11T00:00:00.000Z")
-const accents = ["dawn", "rain", "moon"] as const
-const sceneLabels = [
-  "晨光里的窗边小路",
-  "细雨里的屋檐花园",
-  "月色里的安静山坡",
-] as const
 
 export const seedReadyCard = {
   sentence: {
@@ -30,64 +26,79 @@ export const seedReadyCard = {
   },
 } as const
 
-const extraSeedReadyCards = Array.from({ length: 60 }, (_, index) => {
-  const number = index + 2
-  const padded = String(number).padStart(2, "0")
-  const accent = accents[index % accents.length]
-  const createdAt = new Date(seededAt.getTime() + number * 1000)
-
-  return {
+export const seedReadyCards = [
+  seedReadyCard,
+  {
     sentence: {
-      id: `seed-hitokoto-refresh-${padded}`,
-      text: `第 ${padded} 阵微风，把安静的光留在纸上。`,
+      id: "seed-hitokoto-rain-note",
+      text: "雨声很轻，像小动物路过屋檐。",
       source: "mock",
-      createdAt,
+      createdAt: new Date(seededAt.getTime() + 1000),
     },
     card: {
-      id: `seed-quiet-gallery-card-${padded}`,
-      sentenceId: `seed-hitokoto-refresh-${padded}`,
+      id: "seed-quiet-gallery-card-rain-note",
+      sentenceId: "seed-hitokoto-rain-note",
       status: "ready",
-      sceneLabel: `${sceneLabels[index % sceneLabels.length]} ${padded}`,
-      accent,
+      sceneLabel: "细雨里的屋檐花园",
+      accent: "rain",
       illustrationPath: null,
       styleVersion: "quiet-gallery-v1",
-      createdAt,
-      updatedAt: createdAt,
+      createdAt: new Date(seededAt.getTime() + 1000),
+      updatedAt: new Date(seededAt.getTime() + 1000),
     },
-  } as const
-})
-
-export const seedReadyCards = [seedReadyCard, ...extraSeedReadyCards] as const
+  },
+  {
+    sentence: {
+      id: "seed-hitokoto-moon-hill",
+      text: "月亮把山坡照亮，也把沉默照得柔软。",
+      source: "mock",
+      createdAt: new Date(seededAt.getTime() + 2000),
+    },
+    card: {
+      id: "seed-quiet-gallery-card-moon-hill",
+      sentenceId: "seed-hitokoto-moon-hill",
+      status: "ready",
+      sceneLabel: "月色里的安静山坡",
+      accent: "moon",
+      illustrationPath: null,
+      styleVersion: "quiet-gallery-v1",
+      createdAt: new Date(seededAt.getTime() + 2000),
+      updatedAt: new Date(seededAt.getTime() + 2000),
+    },
+  },
+] as const
 
 export async function seedReadyCardStore(client: DatabaseClient) {
   await client.db.transaction(async (tx) => {
-    for (const readyCard of seedReadyCards) {
-      await tx
-        .insert(sentences)
-        .values(readyCard.sentence)
-        .onConflictDoUpdate({
-          target: sentences.id,
-          set: {
-            text: readyCard.sentence.text,
-            source: readyCard.sentence.source,
-          },
-        })
+    await tx
+      .insert(sentences)
+      .values(seedReadyCards.map((readyCard) => readyCard.sentence))
+      .onConflictDoUpdate({
+        target: sentences.id,
+        set: {
+          text: sqlExcluded("text"),
+          source: sqlExcluded("source"),
+        },
+      })
 
-      await tx
-        .insert(cards)
-        .values(readyCard.card)
-        .onConflictDoUpdate({
-          target: cards.id,
-          set: {
-            sentenceId: readyCard.card.sentenceId,
-            status: readyCard.card.status,
-            sceneLabel: readyCard.card.sceneLabel,
-            accent: readyCard.card.accent,
-            illustrationPath: readyCard.card.illustrationPath,
-            styleVersion: readyCard.card.styleVersion,
-            updatedAt: readyCard.card.updatedAt,
-          },
-        })
-    }
+    await tx
+      .insert(cards)
+      .values(seedReadyCards.map((readyCard) => readyCard.card))
+      .onConflictDoUpdate({
+        target: cards.id,
+        set: {
+          sentenceId: sqlExcluded("sentence_id"),
+          status: sqlExcluded("status"),
+          sceneLabel: sqlExcluded("scene_label"),
+          accent: sqlExcluded("accent"),
+          illustrationPath: sqlExcluded("illustration_path"),
+          styleVersion: sqlExcluded("style_version"),
+          updatedAt: sqlExcluded("updated_at"),
+        },
+      })
   })
+}
+
+function sqlExcluded(column: string) {
+  return sql.raw(`excluded.${column}`)
 }

@@ -8,6 +8,8 @@ import { seedReadyCard, seedReadyCardStore } from "@/lib/cards/seed-ready-card"
 import { createDatabaseClient } from "@/lib/db/client"
 import { cards, readyCardViews, sentences } from "@/lib/db/schema"
 
+import { seedExtraReadyCardFixtures } from "./ready-card-fixtures"
+
 const e2eDatabasePath = "test-data/e2e/juhua.sqlite"
 
 const seedCard = {
@@ -38,8 +40,12 @@ async function withE2eDatabase<T>(
   }
 }
 
-async function rerunSeedReadyCardStore() {
-  await withE2eDatabase((client) => seedReadyCardStore(client))
+async function seedE2eReadyCardStore() {
+  await withE2eDatabase(async (client) => {
+    await client.db.delete(readyCardViews)
+    await seedReadyCardStore(client)
+    await seedExtraReadyCardFixtures(client)
+  })
 }
 
 async function clearReadyCards() {
@@ -71,8 +77,8 @@ async function fetchReadyCard(requestContext: {
   return requestContext.get("/api/ready-card")
 }
 
-test.afterEach(async () => {
-  await rerunSeedReadyCardStore()
+test.beforeEach(async () => {
+  await seedE2eReadyCardStore()
 })
 
 test("serves a ready card from the public API and sets anonymous identity", async ({
@@ -99,6 +105,65 @@ test("avoids the prior 50 cards for one API visitor when enough cards exist", as
   }
 })
 
+test("keeps recent history stable when IP context changes for the same cookie", async ({
+  playwright,
+}) => {
+  const visitor = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+  })
+
+  try {
+    const firstCard = await getReadyCard(
+      await visitor.get("/api/ready-card", {
+        headers: { "x-forwarded-for": "198.51.100.1" },
+      })
+    )
+    const secondCard = await getReadyCard(
+      await visitor.get("/api/ready-card", {
+        headers: { "x-forwarded-for": "203.0.113.5" },
+      })
+    )
+
+    expect(secondCard.id).not.toBe(firstCard.id)
+  } finally {
+    await visitor.dispose()
+  }
+})
+
+test("serializes concurrent refresh selection for one visitor", async ({
+  request,
+}) => {
+  await getReadyCard(await fetchReadyCard(request))
+
+  const cards = await Promise.all(
+    Array.from({ length: 5 }, async () =>
+      getReadyCard(await fetchReadyCard(request))
+    )
+  )
+  const uniqueIds = new Set(cards.map((card) => card.id))
+
+  expect(uniqueIds.size).toBe(cards.length)
+})
+
+test("sets secure anonymous cookie behind forwarded HTTPS", async ({
+  playwright,
+}) => {
+  const visitor = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+  })
+
+  try {
+    const response = await visitor.get("/api/ready-card", {
+      headers: { "x-forwarded-proto": "https" },
+    })
+    await getReadyCard(response)
+
+    expect(response.headers()["set-cookie"]).toContain("Secure")
+  } finally {
+    await visitor.dispose()
+  }
+})
+
 test("keeps different anonymous API visitors isolated", async ({
   playwright,
 }) => {
@@ -121,6 +186,19 @@ test("keeps different anonymous API visitors isolated", async ({
     await firstVisitor.dispose()
     await secondVisitor.dispose()
   }
+})
+
+test("enforces ready-card view foreign keys on runtime connections", async () => {
+  await expect(
+    withE2eDatabase(async (client) => {
+      await client.db.insert(readyCardViews).values({
+        id: "test-invalid-view",
+        visitorKey: "test-visitor",
+        cardId: "missing-card",
+        seenAt: new Date(),
+      })
+    })
+  ).rejects.toThrow()
 })
 
 test("renders the API-backed ready card on the homepage", async ({ page }) => {
@@ -256,7 +334,7 @@ test("keeps seeding idempotent for a fresh public ready-card visitor", async ({
 
   try {
     const beforeCard = await getReadyCard(await fetchReadyCard(beforeVisitor))
-    await rerunSeedReadyCardStore()
+    await seedE2eReadyCardStore()
     const afterCard = await getReadyCard(await fetchReadyCard(afterVisitor))
 
     expect(beforeCard).toEqual(seedCard)
