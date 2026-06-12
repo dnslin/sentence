@@ -722,7 +722,6 @@ worker CLI → SQLite ready inventory count → durable daily reservation → ge
 const readyPoolReplenishThreshold = 50
 const readyPoolTargetInventory = 200
 const readyPoolDailyGenerationCap = 250
-const readyPoolGenerationConcurrency = 1
 const readyPoolWorkerIntervalMs = 60_000
 ```
 
@@ -732,6 +731,15 @@ const readyPoolWorkerIntervalMs = 60_000
 type ReadyPoolGenerator = () => Promise<XaiReadyCardGenerationResult>
 type ReadyPoolClock = () => Date
 type ReadyPoolStopSignal = { readonly stopped: boolean }
+type ReadyPoolSleep = (input: {
+  durationMs: number
+  stopSignal?: ReadyPoolStopSignal
+}) => Promise<void>
+
+type ReadyPoolErrorSummary = {
+  stage: "generation_exception" | "replenishment_pass" | "summary_observer"
+  message: string
+}
 
 type ReadyPoolReplenishmentSummary = {
   startedInventory: number
@@ -739,10 +747,11 @@ type ReadyPoolReplenishmentSummary = {
   threshold: 50
   target: 200
   dailyCap: 250
-  generatedReadyCount: number
+  readyInventoryGrowthCount: number
   failedCount: number
   reservedCount: number
   skippedReason: "inventory_above_threshold" | "daily_cap_exhausted" | "stopped" | null
+  errors: ReadyPoolErrorSummary[]
 }
 
 async function replenishReadyPoolOnce(input: {
@@ -751,6 +760,16 @@ async function replenishReadyPoolOnce(input: {
   now?: ReadyPoolClock
   stopSignal?: ReadyPoolStopSignal
 }): Promise<ReadyPoolReplenishmentSummary>
+
+async function runReadyPoolWorkerLoop(input: {
+  client: DatabaseClient
+  generateReadyCard?: ReadyPoolGenerator
+  now?: ReadyPoolClock
+  sleep?: ReadyPoolSleep
+  stopSignal?: ReadyPoolStopSignal
+  onSummary?: (summary: ReadyPoolReplenishmentSummary) => void
+  onError?: (error: ReadyPoolErrorSummary) => void
+}): Promise<void>
 ```
 
 **Database table**
@@ -769,13 +788,17 @@ ready_pool_generation_days(
 - The worker must be independently runnable from the web process through `pnpm worker:ready-pool`.
 - The production worker must validate `XAI_API_KEY` before starting the long-running loop and must not print the secret.
 - The production worker applies migrations before opening its runtime `DatabaseClient`.
-- Ready inventory is a database fact: count rows that public ready-card selection can serve (`cards.status='ready'`, valid accent, joined sentence row). Do not count failed attempts or planned work.
+- Ready inventory is a database fact: count rows that public ready-card selection can serve (`cards.status='ready'`, valid accent, joined sentence row). Worker counting must reuse the public ready-card repository eligibility helper instead of duplicating the predicate.
 - Replenishment starts only when ready inventory is below `50`; inventory `50` or higher skips generation.
 - When inventory is below `50`, one pass generates toward `200`, stopping if the target is reached, the daily cap is exhausted, or the stop signal is set.
 - The accepted daily-cap boundary is a worker ready-card generation-job reservation before each `generateReadyCardForHitokotoSentence(...)` call. It does not count each internal xAI image retry as a separate cap unit.
 - Daily cap state must be durable in SQLite and guarded by `BEGIN IMMEDIATE` so process restarts do not reset same-day capacity.
 - Worker generation concurrency is `1`: await each generation job and re-count inventory before deciding whether to reserve/start another job. Do not launch a `Promise.all` batch for replenishment.
 - Failed generation results or thrown generator errors count as failed worker outcomes, consume the already-reserved worker-job capacity, and must not create/update public ready `cards` rows.
+- Thrown generator errors after reservation must be included in `summary.errors` with sanitized diagnostics and without secrets, raw base64, or provider credentials.
+- `readyInventoryGrowthCount` means positive public-ready inventory delta, not the number of `status='ready'` generator results. Canonical upserts that do not increase inventory must not increment it.
+- The long-running worker loop must catch recoverable replenishment-pass and `onSummary` observer errors, report sanitized diagnostics through `onError` or a fallback logger, and continue the next iteration unless stopped.
+- Worker idle sleep must be stop-aware in production so SIGINT/SIGTERM can wake the loop promptly instead of waiting for the full interval.
 - Pipeline failures that reach an attempt row remain inspectable in `generation_attempts`; worker summaries may report aggregate counts but must not include raw base64 or secrets.
 
 ### 4. Validation & Error Matrix
@@ -789,8 +812,11 @@ ready_pool_generation_days(
 | Daily row has `generation_count >= 250` | Return `cap_exhausted` without calling the generator. |
 | Process restarts on the same day | Existing `ready_pool_generation_days` count still limits further reservations. |
 | Generation returns `status='failed'` | Increment failed summary count, keep failure inspectable through persisted status, re-count inventory, and continue if cap remains. |
-| Generator throws | Treat as a failed worker outcome, re-count inventory, and continue unless stopped/capped. |
+| Generator throws | Treat as a failed worker outcome, include a sanitized `generation_exception` error summary, re-count inventory, and continue unless stopped/capped. |
+| Replenishment pass throws a recoverable infrastructure error | Report a sanitized `replenishment_pass` error and continue the long-running loop's next iteration. |
+| `onSummary` throws | Report a sanitized `summary_observer` error and continue the long-running loop. |
 | Stop signal is set between jobs | Do not reserve/start another job; return `skippedReason='stopped'`. |
+| Stop signal is set during idle sleep | Wake the production sleep promptly and exit the loop without waiting the full interval. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -813,6 +839,11 @@ For changes to this path, add or update behavior tests that assert:
 - Daily cap reservations persist across closed/reopened database clients for the same injected UTC day.
 - Exhausting the daily cap prevents further generation calls and returns `daily_cap_exhausted`.
 - Failed controlled generations remain inspectable and are excluded from ready-card inventory.
+- Thrown generator errors after reservation are counted and included as sanitized diagnostics without leaking secrets.
+- Ready generator results that perform canonical upserts without inventory growth do not increment `readyInventoryGrowthCount`.
+- Worker inventory counting shares public ready-card eligibility and excludes the same invalid/corrupt rows public serving excludes.
+- Recoverable replenishment-pass errors and `onSummary` observer errors do not permanently terminate the long-running worker loop.
+- Stop during idle sleep wakes the production loop promptly rather than waiting the full interval.
 - `pnpm test:worker`, `pnpm test:xai`, `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass for worker-related changes.
 
 ### 7. Wrong vs Correct
