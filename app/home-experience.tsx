@@ -9,7 +9,7 @@ export function HomeExperience({ card }: { card: PublicReadyCard | null }) {
         className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 sm:gap-8"
         aria-labelledby="home-title"
       >
-        <PublicHomeHeader />
+        <PublicHomeHeader hasReadyCard={card !== null} />
         {card ? <HomeCardExperience card={card} /> : <HomeEmptyStock />}
       </section>
     </main>
@@ -38,7 +38,11 @@ function HomeEmptyStock() {
   )
 }
 
-function PublicHomeHeader() {
+function PublicHomeHeader({ hasReadyCard }: { hasReadyCard: boolean }) {
+  const description = hasReadyCard
+    ? "先呈现一张已准备好的图文卡片；再来一张会刷新生成新的图文绑定，下载与分享会在后续切片接入真实能力。"
+    : "图文卡片会从已经准备好的图文绑定中呈现；现在先安静等新的卡片准备好。"
+
   return (
     <header className="max-w-2xl space-y-3 text-center">
       <p className="text-xs font-medium tracking-[0.28em] text-stone-500 uppercase">
@@ -51,7 +55,7 @@ function PublicHomeHeader() {
         把随机短句放进一张安静的图文卡片。
       </h1>
       <p className="text-base leading-7 text-stone-600 sm:text-lg">
-        先呈现一张已准备好的图文卡片；再来一张会刷新生成新的图文绑定，下载与分享会在后续切片接入真实能力。
+        {description}
       </p>
     </header>
   )

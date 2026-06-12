@@ -288,7 +288,18 @@ function isReadyCardErrorResponse(value: unknown): value is ReadyCardErrorRespon
 
 ```typescript
 type ReadyCardErrorResponse = {
-  error: "ready_card_not_found" | "ready_card_limited"
+  error: "ready_card_not_found"
+  message: string
+}
+```
+
+**Future limit response seam**
+
+Until the rate-limit slice wires production API responses, `ready_card_limited` handling is a local refresh-client compatibility branch, not part of the current `/api/ready-card` public API type.
+
+```typescript
+type RefreshLimitResponse = {
+  error: "ready_card_limited"
   message: string
 }
 ```
@@ -311,9 +322,9 @@ export function QuietGalleryCard({
 
 - The client may replace the rendered 图文卡片 only after `/api/ready-card` returns `ok` and the JSON narrows through `isReadyCardResponse`.
 - `PublicReadyCard` includes `illustrationUrl: string | null`; frontend code must consume this shared DTO rather than redefine the API response shape.
-- Non-OK `/api/ready-card` JSON must be treated as `unknown` and narrowed through the shared `isReadyCardErrorResponse` guard before reading `error` or `message`.
+- Non-OK `/api/ready-card` JSON must be treated as `unknown` and narrowed through the shared `isReadyCardErrorResponse` guard before reading current production error fields.
 - `ready_card_not_found` maps to calm empty-stock copy while preserving the current 图文卡片.
-- `ready_card_limited` maps to gentle limit copy while preserving the current 图文卡片. This is only the public response-handling contract; real anonymous rate-limit counters/persistence belong to the rate-limit slice.
+- `ready_card_limited` maps to gentle limit copy while preserving the current 图文卡片 only through the local refresh-client compatibility seam until the rate-limit slice adds the production API contract.
 - Unknown non-OK statuses, network failures, invalid JSON, and invalid success shapes map to non-technical retry-oriented failure copy.
 - API code must expose only safe same-origin generated-illustration paths as `illustrationUrl`; unsafe stored values must reach the frontend as `null`.
 - When `illustrationUrl` is a string, the card renderer must display a real image using that URL and the card's `sceneLabel` as the accessible label/alt text.
@@ -333,7 +344,7 @@ export function QuietGalleryCard({
 | API returns `illustrationUrl: null` | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`. |
 | API returns non-OK unknown status or invalid error payload | Keep current card, announce non-technical retry-oriented failure, re-enable refresh. |
 | API returns `ready_card_not_found` | Keep current card, announce calm empty-stock copy, re-enable refresh. |
-| API returns `ready_card_limited` | Keep current card, announce gentle limit copy, re-enable refresh without starting generation or automatic retry. |
+| Future/local refresh seam receives `ready_card_limited` | Keep current card, announce gentle limit copy, re-enable refresh without starting generation or automatic retry. |
 | API returns invalid JSON shape | Keep current card, announce failure, re-enable refresh. |
 | User clicks repeatedly while pending | Send at most one in-flight refresh request. |
 | Pending state active | Existing card remains visible and exposes busy/loading state. |
@@ -345,7 +356,7 @@ export function QuietGalleryCard({
 - Good: a card with `illustrationUrl` renders a browser-fetchable `<img>` using the same-origin stored WebP URL.
 - Base: a seeded/mock card with `illustrationUrl: null` renders the existing CSS fallback and remains accessible through `role="img"`.
 - Good: a failed refresh with `ready_card_not_found` keeps the visible card and announces that new 图文卡片 are still being prepared.
-- Good: a failed refresh with `ready_card_limited` keeps the visible card and announces gentle limit copy without starting a retry loop.
+- Good: a future/local refresh limit response keeps the visible card and announces gentle limit copy without starting a retry loop.
 - Base: a delayed API response shows `刷新生成中`, disables the button, and leaves the current card visible.
 - Bad: optimistically replacing only the sentence before the server returns a canonical 图文绑定.
 - Bad: catching refresh failure by clearing the card or showing fake empty-stock UI.
@@ -361,7 +372,7 @@ For refresh UI work, use browser-visible tests that assert:
 - A delayed response shows pending copy/state and prevents duplicate requests.
 - A failed response keeps the current card, announces non-technical retry-oriented failure, and allows retry.
 - A `ready_card_not_found` response keeps the current card, announces calm empty-stock copy, and allows retry.
-- A `ready_card_limited` response keeps the current card, announces gentle limit copy, and does not start an automatic retry/generation loop.
+- A future/local `ready_card_limited` response seam keeps the current card, announces gentle limit copy, and does not start an automatic retry/generation loop.
 - Placeholder actions not implemented in the current slice still announce truthful placeholder copy.
 
 ### 7. Wrong vs Correct

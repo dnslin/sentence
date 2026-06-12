@@ -35,7 +35,7 @@
 ### Cycle 5: Refresh limit response
 
 - RED: Add a browser test that routes `/api/ready-card` to `429 { error: "ready_card_limited", message: "..." }`, clicks `再来一张`, and verifies the selected limit announcement plus current-card preservation.
-- GREEN: Add the `ready_card_limited` public error variant and client mapping. Do not implement counters or production 429 generation.
+- GREEN: Add a local refresh-client compatibility branch for `ready_card_limited`. Do not add it to the current shared production API error union, and do not implement counters or production 429 generation.
 
 ### Cycle 6: Regression and refactor
 

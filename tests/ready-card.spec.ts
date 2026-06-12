@@ -326,6 +326,11 @@ test("renders a calm empty-stock homepage when no ready cards exist", async ({
     )
   ).toBeVisible()
   await expect(
+    page.getByText("图文卡片会从已经准备好的图文绑定中呈现")
+  ).toBeVisible()
+  await expect(page.getByText(/先呈现一张已准备好的图文卡片/)).toHaveCount(0)
+  await expect(page.getByText(/再来一张会刷新生成新的图文绑定/)).toHaveCount(0)
+  await expect(
     page.getByText(/Run `pnpm db:setup`|local store|数据库|stack/i)
   ).toHaveCount(0)
   await expect(page.getByRole("article", { name: "图文卡片预览" })).toHaveCount(

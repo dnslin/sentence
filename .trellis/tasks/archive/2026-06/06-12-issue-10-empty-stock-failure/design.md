@@ -37,19 +37,15 @@ Conventional quick fixes often catch every error and display one generic toast. 
 Extend `lib/cards/public-ready-card.ts` with shared public response types:
 
 ```typescript
-type ReadyCardUnavailableReason =
-  | "ready_card_not_found"
-  | "ready_card_limited"
+type ReadyCardUnavailableReason = "ready_card_not_found"
 
 export type ReadyCardErrorResponse = {
   error: ReadyCardUnavailableReason
   message: string
 }
-
-export type ReadyCardApiResponse = ReadyCardResponse | ReadyCardErrorResponse
 ```
 
-Also add type guards such as `isReadyCardErrorResponse(...)` and `isReadyCardLimitedResponse(...)` as needed. Do not use `any`; all JSON is handled as `unknown` at the boundary.
+Also add type guards such as `isReadyCardErrorResponse(...)` for the current public API error payload. Keep future-only limit handling out of the shared API type until the rate-limit slice wires the production route. Do not use `any`; all JSON is handled as `unknown` at the boundary.
 
 ### Homepage state
 
@@ -68,7 +64,7 @@ Also add type guards such as `isReadyCardErrorResponse(...)` and `isReadyCardLim
 
 No DB setup command, local-store detail, generation detail, stack trace, or provider detail appears in the public payload.
 
-This slice will not produce a real `429 ready_card_limited` response from production API because issue #11 owns rate limiting. Tests can route/mock a 429 response at the browser boundary to verify the client handles that public shape.
+This slice will not produce a real `429 ready_card_limited` response from production API because issue #11 owns rate limiting. Tests can route/mock a local 429 response at the browser boundary to verify the refresh client compatibility seam without advertising it as the current API contract.
 
 ### Refresh client state
 
@@ -78,7 +74,7 @@ This slice will not produce a real `429 ready_card_limited` response from produc
 - Set pending copy once per user click.
 - On success, replace the whole `PublicReadyCard` only after `isReadyCardResponse(...)` passes.
 - On known `ready_card_not_found`, announce the required empty-stock copy.
-- On known `ready_card_limited`, announce the required limit copy.
+- On a local/future-compatible `ready_card_limited` response, announce the required limit copy.
 - On unknown non-OK status, network failure, invalid JSON, or invalid success shape, announce the required operational failure copy.
 - Always preserve `currentCard` unless a valid success response is received.
 - Always clear pending state in `finally`.
@@ -102,7 +98,7 @@ Refresh click
   → one fetch('/api/ready-card') while not pending
   → 200 + valid { card } replaces card
   → 404 ready_card_not_found maps to empty-stock copy
-  → 429 ready_card_limited maps to limit copy
+  → local/future 429 ready_card_limited seam maps to limit copy
   → any other failure maps to operational retry copy
 ```
 
@@ -110,7 +106,7 @@ Refresh click
 
 - `PublicReadyCard` remains unchanged so existing renderers and API success tests remain compatible.
 - `ReadyCardResponse` remains the success shape; broader API/error types are additive.
-- Existing #11 rate-limit implementation can later return `429 { error: "ready_card_limited", message: ... }` without changing the refresh client contract.
+- Existing #11 rate-limit implementation can later promote `429 { error: "ready_card_limited", message: ... }` into the shared production API contract; until then it remains a refresh-client compatibility seam.
 - Empty homepage no longer follows the older backend spec line that required a local setup error; this task supersedes that behavior because issue #10 and ADR 0002 require public empty-stock handling.
 
 ## Rollback considerations

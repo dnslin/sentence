@@ -16,16 +16,12 @@ export type ReadyCardResponse = {
   card: PublicReadyCard
 }
 
-export type ReadyCardUnavailableReason =
-  | "ready_card_not_found"
-  | "ready_card_limited"
+export type ReadyCardUnavailableReason = "ready_card_not_found"
 
 export type ReadyCardErrorResponse = {
   error: ReadyCardUnavailableReason
   message: string
 }
-
-export type ReadyCardApiResponse = ReadyCardResponse | ReadyCardErrorResponse
 
 export function isReadyCardAccent(value: string): value is ReadyCardAccent {
   return readyCardAccents.includes(value as ReadyCardAccent)
@@ -59,7 +55,7 @@ export function isReadyCardResponse(
 export function isReadyCardUnavailableReason(
   value: unknown
 ): value is ReadyCardUnavailableReason {
-  return value === "ready_card_not_found" || value === "ready_card_limited"
+  return value === "ready_card_not_found"
 }
 
 export function isReadyCardErrorResponse(

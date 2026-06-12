@@ -18,9 +18,44 @@ const refreshFailureAnnouncement =
 const refreshLimitAnnouncement =
   "今天的刷新有点频繁了，先让这张图文卡片停留一会儿。"
 
+type RefreshLimitResponse = {
+  error: "ready_card_limited"
+  message: string
+}
+
 type Announcement = {
   text: string
   sequence: number
+}
+
+function isRefreshLimitResponse(value: unknown): value is RefreshLimitResponse {
+  if (typeof value !== "object" || value === null) return false
+
+  const response = value as Record<string, unknown>
+
+  return (
+    response.error === "ready_card_limited" &&
+    typeof response.message === "string"
+  )
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled ready-card error reason: ${value}`)
+}
+
+function getRefreshErrorAnnouncement(body: unknown) {
+  if (isReadyCardErrorResponse(body)) {
+    switch (body.error) {
+      case "ready_card_not_found":
+        return refreshEmptyStockAnnouncement
+      default:
+        return assertNever(body.error)
+    }
+  }
+
+  if (isRefreshLimitResponse(body)) return refreshLimitAnnouncement
+
+  return refreshFailureAnnouncement
 }
 
 export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
@@ -46,16 +81,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
       const body: unknown = await response.json().catch(() => null)
 
       if (!response.ok) {
-        if (isReadyCardErrorResponse(body)) {
-          announce(
-            body.error === "ready_card_limited"
-              ? refreshLimitAnnouncement
-              : refreshEmptyStockAnnouncement
-          )
-          return
-        }
-
-        announce(refreshFailureAnnouncement)
+        announce(getRefreshErrorAnnouncement(body))
         return
       }
 
