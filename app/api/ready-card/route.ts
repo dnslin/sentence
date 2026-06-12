@@ -5,15 +5,13 @@ import { createReadyCardRequestContext } from "@/lib/cards/ready-card-request-co
 import { getNextReadyCardForVisitor } from "@/lib/cards/ready-card-repository"
 import { createDatabaseClient } from "@/lib/db/client"
 
-import type { ReadyCardResponse } from "@/lib/cards/public-ready-card"
+import type {
+  ReadyCardErrorResponse,
+  ReadyCardResponse,
+} from "@/lib/cards/public-ready-card"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
-
-type ReadyCardErrorResponse = {
-  error: "ready_card_not_found"
-  message: string
-}
 
 export async function GET() {
   const client = createDatabaseClient()
@@ -29,7 +27,8 @@ export async function GET() {
       return NextResponse.json<ReadyCardErrorResponse>(
         {
           error: "ready_card_not_found",
-          message: "No ready 图文卡片 is available in the local store.",
+          message:
+            "这会儿还没有准备好的图文卡片。新的图文绑定还在慢慢准备中，请稍后再试。",
         },
         { status: 404 }
       )

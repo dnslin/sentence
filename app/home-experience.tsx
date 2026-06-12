@@ -2,26 +2,60 @@ import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 
 import { HomeCardExperience } from "./home-card-experience"
 
-export function HomeExperience({ card }: { card: PublicReadyCard }) {
+export function HomeExperience({ card }: { card: PublicReadyCard | null }) {
   return (
     <main className="flex min-h-svh items-center justify-center overflow-x-hidden bg-[#f7f2ea] px-4 py-8 text-stone-900 sm:px-8 lg:px-12">
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 sm:gap-8" aria-labelledby="home-title">
-        <PublicHomeHeader />
-        <HomeCardExperience card={card} />
+      <section
+        className="mx-auto flex w-full max-w-5xl flex-col items-center gap-6 sm:gap-8"
+        aria-labelledby="home-title"
+      >
+        <PublicHomeHeader hasReadyCard={card !== null} />
+        {card ? <HomeCardExperience card={card} /> : <HomeEmptyStock />}
       </section>
     </main>
   )
 }
 
-function PublicHomeHeader() {
+function HomeEmptyStock() {
+  return (
+    <section
+      className="w-full max-w-2xl rounded-[2rem] border border-stone-200/80 bg-white/70 px-6 py-8 text-center shadow-sm shadow-stone-200/60 sm:px-10 sm:py-10"
+      aria-labelledby="home-empty-title"
+    >
+      <p className="text-xs font-medium tracking-[0.24em] text-stone-400 uppercase">
+        图文卡片准备中
+      </p>
+      <h2
+        id="home-empty-title"
+        className="mt-3 text-2xl font-semibold tracking-tight text-stone-900 sm:text-3xl"
+      >
+        这会儿还没有准备好的图文卡片。
+      </h2>
+      <p className="mt-4 text-base leading-7 text-stone-600 sm:text-lg">
+        新的图文绑定还在慢慢准备中。请稍后再来看看，我们不会让你等待现场生成。
+      </p>
+    </section>
+  )
+}
+
+function PublicHomeHeader({ hasReadyCard }: { hasReadyCard: boolean }) {
+  const description = hasReadyCard
+    ? "先呈现一张已准备好的图文卡片；再来一张会刷新生成新的图文绑定，下载与分享会在后续切片接入真实能力。"
+    : "图文卡片会从已经准备好的图文绑定中呈现；现在先安静等新的卡片准备好。"
+
   return (
     <header className="max-w-2xl space-y-3 text-center">
-      <p className="text-xs font-medium tracking-[0.28em] text-stone-500 uppercase">句画</p>
-      <h1 id="home-title" className="text-3xl font-semibold tracking-tight sm:text-5xl">
+      <p className="text-xs font-medium tracking-[0.28em] text-stone-500 uppercase">
+        句画
+      </p>
+      <h1
+        id="home-title"
+        className="text-3xl font-semibold tracking-tight sm:text-5xl"
+      >
         把随机短句放进一张安静的图文卡片。
       </h1>
       <p className="text-base leading-7 text-stone-600 sm:text-lg">
-        先呈现一张已准备好的图文卡片；刷新、下载与分享会在后续切片接入真实能力。
+        {description}
       </p>
     </header>
   )

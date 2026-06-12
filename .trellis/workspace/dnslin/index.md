@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 13
+- **Total Sessions**: 14
 - **Last Active**: 2026-06-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~457 | Active |
+| `journal-1.md` | ~491 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 14 | 2026-06-12 | Issue 10 empty-stock failure states | `5397f1a`,  `d7b294f` | `issue-10-development` |
 | 13 | 2026-06-12 | PR 26 ready-pool review fixes | `7452af9`, `d0f08b0` | `issue-9-pregenerated-pool-worker` |
 | 12 | 2026-06-12 | Issue 9 ready-pool worker | `22cbb1a`, `ae52081` | `issue-9-pregenerated-pool-worker` |
 | 11 | 2026-06-12 | Slice 07 generated WebP storage | `078670b`, `e5b03dd`, `22f6fea` | `issue-8-local-webp-storage` |

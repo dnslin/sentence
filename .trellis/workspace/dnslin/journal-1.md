@@ -455,3 +455,37 @@ Fixed PR #26 ready-pool worker review findings: sanitized thrown-error reporting
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Issue 10 empty-stock failure states
+
+**Date**: 2026-06-12
+**Task**: Issue 10 empty-stock failure states
+**Branch**: `issue-10-development`
+
+### Summary
+
+Implemented GitHub issue #10 on branch issue-10-development: public homepage empty-stock state, safe ready-card API empty payload, distinct refresh handling for operational failure/empty-stock/limit responses, Playwright coverage, and updated backend/frontend specs. Verified lint, typecheck, build, and e2e.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5397f1a` | (see git log) |
+| `d7b294f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

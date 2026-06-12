@@ -18,12 +18,6 @@ export default async function Page() {
     })
     const card = await getNextReadyCardForVisitor(client, context)
 
-    if (!card) {
-      throw new Error(
-        "No ready 图文卡片 is available. Run `pnpm db:setup` to initialize the local store."
-      )
-    }
-
     return <HomeExperience card={card} />
   } finally {
     client.sqlite.close()
