@@ -358,3 +358,176 @@ try {
   throw error
 }
 ```
+
+---
+
+## Scenario: Hitokoto sentence ingestion for generation pipeline
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches real Hitokoto fetching, sentence normalization, Hitokoto sentence metadata persistence, or the first generation-pipeline step before xAI image generation.
+
+This path stops at durable sentence ingestion:
+
+```text
+Hitokoto JSON → strict normalizer → sentences + hitokoto_sentence_metadata → future generation slices
+```
+
+### 2. Signatures
+
+**Focused test command**
+
+```json
+{
+  "test:hitokoto": "node --import tsx --test node-tests/hitokoto-pipeline.test.ts"
+}
+```
+
+Keep Node `node:test` generation-pipeline tests under `node-tests/`, not `tests/`, so Playwright's `testDir: "./tests"` continues to discover only browser e2e tests.
+
+**Hitokoto request constants**
+
+```typescript
+const hitokotoEndpoint = "https://v1.hitokoto.cn/"
+const hitokotoMinLength = 6
+const hitokotoMaxLength = 30
+const hitokotoCategories = ["d", "e", "i", "k"] as const
+```
+
+Requests must include `encode=json`, `min_length=6`, `max_length=30`, and repeated `c` parameters for `d`, `e`, `i`, and `k`.
+
+**Public pipeline boundary**
+
+```typescript
+type HitokotoFetch = (url: string) => Promise<{
+  ok: boolean
+  status: number
+  json(): Promise<unknown>
+}>
+
+async function fetchAndStoreHitokotoSentence(input: {
+  client: DatabaseClient
+  fetchFn?: HitokotoFetch
+}): Promise<StoredHitokotoSentence>
+```
+
+The injectable `fetchFn` is the public test seam for controlled API responses; production callers can omit it and use global `fetch`.
+
+**Database tables**
+
+Existing generic table:
+
+```text
+sentences(id text primary key, text text not null, source text not null, created_at integer not null)
+```
+
+Hitokoto-specific metadata table:
+
+```text
+hitokoto_sentence_metadata(
+  sentence_id text primary key references sentences(id),
+  hitokoto_uuid text unique nullable,
+  source_identity text not null unique,
+  hitokoto_id integer nullable,
+  type text nullable,
+  from_text text nullable,
+  from_who text nullable,
+  creator text nullable,
+  creator_uid integer nullable,
+  reviewer integer nullable,
+  commit_from text nullable,
+  hitokoto_created_at text nullable,
+  length integer nullable,
+  fetched_at integer not null
+)
+```
+
+### 3. Contracts
+
+- Treat Hitokoto JSON as `unknown` at the external boundary. Normalize once into a typed projection before persistence; do not cast raw fields in repositories or callers.
+- `hitokoto` must normalize to a non-empty string whose Unicode code-point length is 6–30.
+- Optional string fields (`uuid`, `type`, `from`, `from_who`, `creator`, `commit_from`, `created_at`) may be `null`/missing and should normalize to `null`; non-string values are invalid.
+- Optional integer fields (`id`, `creator_uid`, `reviewer`, `length`) may be `null`/missing and should normalize to `null`; non-integers are invalid.
+- A usable Hitokoto UUID is a valid UUID string normalized to lowercase. Malformed non-empty UUID strings are unusable, not trusted identities.
+- `source_identity` must always be non-null:
+  - `hitokoto:uuid:<uuid>` for usable UUIDs.
+  - A deterministic fallback identity for UUID-less or unusable-UUID records based on normalized sentence text plus `type`, `from`, and `from_who`.
+- Store `sentences.source` as `"hitokoto"` for real Hitokoto rows.
+- Duplicate handling must reuse the existing sentence row instead of creating a new `sentences` row when either `hitokoto_uuid` or `source_identity` already exists.
+- This slice must not import or call xAI code, create `cards` rows, or mark anything ready for the public card pool.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Hitokoto HTTP response has `ok=false` | Throw a `HitokotoFetchError` with the HTTP status. |
+| Response body is not an object | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
+| `hitokoto` is missing, empty, non-string, shorter than 6, or longer than 30 | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
+| Optional string field is a number/object/array | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
+| Optional integer field is a string/float/object/array | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
+| Same usable Hitokoto UUID is ingested again | Return the existing sentence with `inserted: false`; keep one `sentences` row and one metadata row. |
+| UUID is missing, blank, or malformed but fallback identity matches an existing row | Return the existing sentence with `inserted: false`; keep one `sentences` row and one metadata row. |
+| Existing mock ready-card seed rows have no Hitokoto metadata | They remain valid; ready-card reads still join `cards → sentences` only. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a controlled response with a valid UUID and nullable `from_who` is fetched with the required query parameters, normalized, inserted into both tables, and returned with `inserted: true`.
+- Good: a second controlled response with the same UUID returns the original `sentenceId` and does not add rows.
+- Good: two UUID-less responses with equivalent normalized text/source facts deduplicate through `source_identity`.
+- Base: seed/mock `sentences` rows use `source="mock"` and have no metadata row.
+- Bad: saving only the sentence text and dropping Hitokoto UUID/source metadata.
+- Bad: using colon-joined fallback identity fields where embedded colons can create boundary collisions; use an unambiguous encoding such as a JSON array.
+- Bad: placing Node `node:test` files under `tests/` without adjusting Playwright discovery.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- The generated Hitokoto URL contains `encode=json`, `min_length=6`, `max_length=30`, and `c` values exactly `d`, `e`, `i`, `k`.
+- A controlled successful response stores one `sentences` row and one `hitokoto_sentence_metadata` row with normalized nullable metadata.
+- Re-ingesting the same usable UUID returns the same `sentenceId` and leaves row counts unchanged.
+- Re-ingesting UUID-less equivalent source facts returns the same `sentenceId` and leaves row counts unchanged.
+- Malformed/unusable UUID strings fall back to deterministic identity instead of creating UUID-based duplicates.
+- Invalid or out-of-range responses reject before any database write.
+- `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Raw external JSON is trusted and duplicate identity is caller discipline.
+const body = (await response.json()) as { hitokoto: string; uuid: string }
+await client.db.insert(sentences).values({
+  id: randomUUID(),
+  text: body.hitokoto,
+  source: "hitokoto",
+  createdAt: new Date(),
+})
+```
+
+#### Correct
+
+```typescript
+const sentence = normalizeHitokotoResponse(await response.json())
+const stored = await storeHitokotoSentence(client, sentence)
+```
+
+#### Wrong
+
+```typescript
+// One `c` parameter silently narrows the agreed category pool.
+const url = "https://v1.hitokoto.cn/?encode=json&min_length=6&max_length=30&c=d"
+```
+
+#### Correct
+
+```typescript
+const url = new URL("https://v1.hitokoto.cn/")
+url.searchParams.set("encode", "json")
+url.searchParams.set("min_length", "6")
+url.searchParams.set("max_length", "30")
+for (const category of ["d", "e", "i", "k"] as const) {
+  url.searchParams.append("c", category)
+}
+```
