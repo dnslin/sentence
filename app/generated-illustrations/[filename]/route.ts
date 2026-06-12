@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises"
+import { createReadStream } from "node:fs"
+import { stat } from "node:fs/promises"
+import { Readable } from "node:stream"
 
 import { NextResponse } from "next/server"
 
@@ -20,13 +22,20 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   try {
-    const bytes = await readFile(filePath)
-    return new NextResponse(bytes, {
-      headers: {
-        "Content-Type": "image/webp",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
-    })
+    const fileStats = await stat(filePath)
+    if (!fileStats.isFile()) {
+      return new NextResponse(null, { status: 404 })
+    }
+
+    return new NextResponse(
+      Readable.toWeb(createReadStream(filePath)) as ReadableStream,
+      {
+        headers: {
+          "Content-Type": "image/webp",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      }
+    )
   } catch {
     return new NextResponse(null, { status: 404 })
   }

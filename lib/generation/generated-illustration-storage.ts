@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { mkdir, readFile, rename, rm, stat } from "node:fs/promises"
+import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises"
 import { isAbsolute, join, relative, resolve } from "node:path"
 
 import sharp from "sharp"
@@ -68,6 +68,41 @@ export function resolveGeneratedIllustrationFilePath(filename: string) {
   return filePath
 }
 
+export function resolveGeneratedIllustrationPublicPath(publicPath: string) {
+  const prefix = `${generatedIllustrationPublicPathPrefix}/`
+  if (!publicPath.startsWith(prefix)) return null
+  if (publicPath.includes("://") || publicPath.startsWith("//")) return null
+
+  const filename = publicPath.slice(prefix.length)
+  if (filename.includes("/")) return null
+
+  return isValidGeneratedIllustrationFilename(filename)
+    ? `${generatedIllustrationPublicPathPrefix}/${filename}`
+    : null
+}
+
+export function resolveGeneratedIllustrationFilePathFromPublicPath(
+  publicPath: string
+) {
+  const safePublicPath = resolveGeneratedIllustrationPublicPath(publicPath)
+  if (!safePublicPath) return null
+
+  const filename = safePublicPath.slice(
+    `${generatedIllustrationPublicPathPrefix}/`.length
+  )
+  return resolveGeneratedIllustrationFilePath(filename)
+}
+
+export async function removeStoredGeneratedIllustrationByPublicPath(
+  publicPath: string
+) {
+  const filePath =
+    resolveGeneratedIllustrationFilePathFromPublicPath(publicPath)
+  if (!filePath) return
+
+  await rm(filePath, { force: true }).catch(() => undefined)
+}
+
 async function ensureWritableDirectory(root: string) {
   await mkdir(root, { recursive: true })
   const rootStats = await stat(root)
@@ -107,10 +142,12 @@ export async function storeGeneratedIllustrationAsWebp(input: {
     )
   }
 
+  let webpBytes: Buffer
+
   try {
-    await sharp(input.imageBytes)
+    webpBytes = await sharp(input.imageBytes)
       .webp({ quality: generatedIllustrationWebpQuality })
-      .toFile(temporaryPath)
+      .toBuffer()
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => undefined)
     throw new GeneratedIllustrationStorageError(
@@ -122,16 +159,16 @@ export async function storeGeneratedIllustrationAsWebp(input: {
   }
 
   try {
+    await writeFile(temporaryPath, webpBytes, { flag: "wx" })
     await rename(temporaryPath, finalPath)
     const finalStats = await stat(finalPath)
-    const finalBytes = await readFile(finalPath)
 
     return {
       filename,
       publicPath: `${generatedIllustrationPublicPathPrefix}/${filename}`,
       filePath: finalPath,
       byteLength: finalStats.size,
-      sha256: createHash("sha256").update(finalBytes).digest("hex"),
+      sha256: createHash("sha256").update(webpBytes).digest("hex"),
     }
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => undefined)

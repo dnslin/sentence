@@ -266,6 +266,38 @@ describe("xAI illustration generation pipeline", () => {
     assert.equal(row?.errorMessage, null)
   })
 
+  test("records failed state when image generation provider calls fail after retry", async () => {
+    let imageCalls = 0
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet watercolor scene." }
+      },
+      async generateBase64Image() {
+        imageCalls += 1
+        throw new Error("provider failed with Bearer xai-provider-secret")
+      },
+    }
+
+    const result = await generateXaiIllustrationForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "failed")
+    assert.equal(result.error.stage, "image_generation")
+    assert.equal(imageCalls, 2)
+    assert.doesNotMatch(result.error.message, /xai-provider-secret/)
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "failed")
+    assert.equal(row?.imageGenerationAttempts, 2)
+    assert.equal(row?.imageMimeType, null)
+    assert.equal(row?.imageByteLength, null)
+    assert.equal(row?.imageSha256, null)
+    assert.equal(row?.errorStage, "image_generation")
+    assert.doesNotMatch(row?.errorMessage ?? "", /xai-provider-secret/)
+  })
+
   test("retries invalid base64 image output once before succeeding", async () => {
     let imageCalls = 0
     const imageBase64 = createImageBase64(pngBytes)
@@ -407,6 +439,69 @@ describe("xAI illustration generation pipeline", () => {
     const row = await readAttempt(result.attemptId)
     assert.equal(row?.status, "image_generated")
     assert.equal(row?.imageMimeType, "image/png")
+  })
+
+  test("removes the replaced WebP when regenerating the canonical ready card", async () => {
+    const firstPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#f8e2bd",
+      },
+    })
+      .png()
+      .toBuffer()
+    const secondPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#b7d7ef",
+      },
+    })
+      .png()
+      .toBuffer()
+    let imageCalls = 0
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet picture-book scene in soft watercolor." }
+      },
+      async generateBase64Image() {
+        imageCalls += 1
+        return {
+          b64Json: (imageCalls === 1 ? firstPngBytes : secondPngBytes).toString(
+            "base64"
+          ),
+          mimeType: "image/png",
+        }
+      },
+    }
+
+    const firstResult = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+    const secondResult = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(firstResult.status, "ready")
+    assert.equal(secondResult.status, "ready")
+    assert.equal(secondResult.card.id, firstResult.card.id)
+    assert.notEqual(
+      secondResult.card.illustrationUrl,
+      firstResult.card.illustrationUrl
+    )
+    const storedFiles = readdirSync(
+      process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR ?? ""
+    )
+    assert.deepEqual(storedFiles, [
+      secondResult.card.illustrationUrl?.split("/").at(-1),
+    ])
   })
 
   test("records image_conversion failure without creating a ready card", async () => {

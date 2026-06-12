@@ -3,6 +3,10 @@ import { randomUUID } from "node:crypto"
 import { and, eq, sql } from "drizzle-orm"
 
 import { cards } from "@/lib/db/schema"
+import {
+  removeStoredGeneratedIllustrationByPublicPath,
+  resolveGeneratedIllustrationPublicPath,
+} from "@/lib/generation/generated-illustration-storage"
 
 import type { DatabaseClient } from "@/lib/db/client"
 import type { PublicReadyCard, ReadyCardAccent } from "./public-ready-card"
@@ -20,6 +24,14 @@ export async function upsertGeneratedReadyCard(input: {
   accent?: ReadyCardAccent
   styleVersion?: string
 }): Promise<PublicReadyCard> {
+  const newIllustrationUrl = resolveGeneratedIllustrationPublicPath(
+    input.illustrationUrl
+  )
+
+  if (!newIllustrationUrl) {
+    throw new Error("Generated ready-card illustration URL is invalid")
+  }
+
   const now = new Date()
   const styleVersion = input.styleVersion ?? generatedReadyCardStyleVersion
   const card = {
@@ -28,13 +40,23 @@ export async function upsertGeneratedReadyCard(input: {
     status: "ready",
     sceneLabel: input.sceneLabel ?? generatedReadyCardSceneLabel,
     accent: input.accent ?? generatedReadyCardAccent,
-    illustrationPath: input.illustrationUrl,
+    illustrationPath: newIllustrationUrl,
     styleVersion,
     createdAt: now,
     updatedAt: now,
   } as const
 
-  await input.client.db
+  const [existingCard] = await input.client.db
+    .select({ id: cards.id, illustrationPath: cards.illustrationPath })
+    .from(cards)
+    .where(
+      and(
+        eq(cards.sentenceId, input.sentenceId),
+        eq(cards.styleVersion, styleVersion)
+      )
+    )
+
+  const [persistedCard] = await input.client.db
     .insert(cards)
     .values(card)
     .onConflictDoUpdate({
@@ -47,16 +69,17 @@ export async function upsertGeneratedReadyCard(input: {
         updatedAt: sql.raw("excluded.updated_at"),
       },
     })
+    .returning({ id: cards.id })
 
-  const [persistedCard] = await input.client.db
-    .select({ id: cards.id })
-    .from(cards)
-    .where(
-      and(
-        eq(cards.sentenceId, input.sentenceId),
-        eq(cards.styleVersion, styleVersion)
-      )
-    )
+  const replacedIllustrationUrl = existingCard?.illustrationPath
+    ? resolveGeneratedIllustrationPublicPath(existingCard.illustrationPath)
+    : null
+  if (
+    replacedIllustrationUrl &&
+    replacedIllustrationUrl !== newIllustrationUrl
+  ) {
+    await removeStoredGeneratedIllustrationByPublicPath(replacedIllustrationUrl)
+  }
 
   return {
     id: persistedCard?.id ?? card.id,

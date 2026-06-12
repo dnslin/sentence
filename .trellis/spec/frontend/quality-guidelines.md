@@ -301,6 +301,7 @@ export function QuietGalleryCard({
 
 - The client may replace the rendered 图文卡片 only after `/api/ready-card` returns `ok` and the JSON narrows through `isReadyCardResponse`.
 - `PublicReadyCard` includes `illustrationUrl: string | null`; frontend code must consume this shared DTO rather than redefine the API response shape.
+- API code must expose only safe same-origin generated-illustration paths as `illustrationUrl`; unsafe stored values must reach the frontend as `null`.
 - When `illustrationUrl` is a string, the card renderer must display a real image using that URL and the card's `sceneLabel` as the accessible label/alt text.
 - When `illustrationUrl` is `null`, the card renderer must preserve the existing CSS fallback illustration and expose the same `sceneLabel` through `role="img"`.
 - While refresh is pending, the button must be disabled or otherwise prevent duplicate concurrent requests.

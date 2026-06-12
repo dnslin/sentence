@@ -1,3 +1,33 @@
+DELETE FROM `ready_card_views`
+WHERE `card_id` IN (
+  SELECT `id`
+  FROM (
+    SELECT
+      `id`,
+      row_number() OVER (
+        PARTITION BY `sentence_id`, `style_version`
+        ORDER BY `updated_at` DESC, `created_at` DESC, `id` ASC
+      ) AS `canonical_rank`
+    FROM `cards`
+  )
+  WHERE `canonical_rank` > 1
+);
+--> statement-breakpoint
+DELETE FROM `cards`
+WHERE `id` IN (
+  SELECT `id`
+  FROM (
+    SELECT
+      `id`,
+      row_number() OVER (
+        PARTITION BY `sentence_id`, `style_version`
+        ORDER BY `updated_at` DESC, `created_at` DESC, `id` ASC
+      ) AS `canonical_rank`
+    FROM `cards`
+  )
+  WHERE `canonical_rank` > 1
+);
+--> statement-breakpoint
 CREATE UNIQUE INDEX `cards_sentence_style_idx` ON `cards` (`sentence_id`, `style_version`);
 --> statement-breakpoint
 PRAGMA foreign_keys=OFF;

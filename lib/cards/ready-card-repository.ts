@@ -9,6 +9,7 @@ import {
 } from "./public-ready-card"
 import type { ReadyCardRequestContext } from "./ready-card-request-context"
 
+import { resolveGeneratedIllustrationPublicPath } from "@/lib/generation/generated-illustration-storage"
 import { cards, readyCardViews, sentences } from "@/lib/db/schema"
 
 import { runImmediateTransaction, type DatabaseClient } from "@/lib/db/client"
@@ -48,7 +49,9 @@ function toPublicReadyCard(row: ValidReadyCardRow): PublicReadyCard {
     sceneLabel: row.sceneLabel,
     accent: row.accent,
     status: row.status,
-    illustrationUrl: row.illustrationUrl,
+    illustrationUrl: row.illustrationUrl
+      ? resolveGeneratedIllustrationPublicPath(row.illustrationUrl)
+      : null,
   }
 }
 

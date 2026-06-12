@@ -729,6 +729,13 @@ const generatedIllustrationPublicPathPrefix = "/generated-illustrations"
 function resolveGeneratedIllustrationRoot(): string
 function isValidGeneratedIllustrationFilename(filename: string): boolean
 function resolveGeneratedIllustrationFilePath(filename: string): string | null
+function resolveGeneratedIllustrationPublicPath(publicPath: string): string | null
+function resolveGeneratedIllustrationFilePathFromPublicPath(
+  publicPath: string
+): string | null
+async function removeStoredGeneratedIllustrationByPublicPath(
+  publicPath: string
+): Promise<void>
 
 async function storeGeneratedIllustrationAsWebp(input: {
   imageBytes: Buffer
@@ -764,18 +771,22 @@ async function generateReadyCardForHitokotoSentence(input: {
 **Database contracts**
 
 - `cards.illustration_path` stores the same-origin public path such as `/generated-illustrations/<uuid>.webp`, not an absolute filesystem path.
+- Public DTO mapping must normalize `cards.illustration_path` through the generated-illustration public-path validator; malformed, absolute, external, traversal-like, or non-UUID values become `illustrationUrl: null` instead of being exposed.
 - `cards(sentence_id, style_version)` has a unique index for the canonical 图文绑定 under the current card shape/style.
+- Migrations that add this unique index must handle legacy duplicate `(sentence_id, style_version)` rows before index creation so startup does not fail on existing data.
 - `generation_attempts.error_stage` includes `image_storage` and `image_conversion` for WebP storage failures.
 
 ### 3. Contracts
 
 - Convert successful generated image bytes to WebP with quality `88` before a card enters the ready pool.
 - Store generated WebP files under `JUHUA_GENERATED_ILLUSTRATIONS_DIR` or the default `data/generated-illustrations`; do not write runtime generated assets into Next.js `public/`.
-- Persist only metadata and the public path in SQLite. Do not store raw base64, original model bytes, or WebP blobs in SQLite.
+- Persist only metadata and the public path in SQLite. Do not store raw base64, original model bytes, WebP blobs, filesystem paths, or external URLs in SQLite public DTO output.
 - Use temporary files for conversion and atomically move the final `.webp` into place.
 - After successful conversion, retain only the final WebP file. Temporary/source conversion files must be removed.
+- Compute returned hash/size from the generated WebP output without rereading the durable file when the output bytes are already available.
 - If ready-card persistence fails after WebP storage succeeds, remove the just-stored WebP before recording the failed attempt.
-- The public image route must validate the filename before resolving a path and must never expose absolute paths in errors.
+- If regenerating the canonical card replaces a prior safe generated-illustration public path, remove the replaced local WebP after the database write succeeds.
+- The public image route must validate the filename before resolving a path, stream valid files from the data root, and must never expose absolute paths in errors.
 - Existing non-ready smoke generation remains valid; only `generateReadyCardForHitokotoSentence(...)` may mark a generated card ready.
 
 ### 4. Validation & Error Matrix
@@ -786,20 +797,26 @@ async function generateReadyCardForHitokotoSentence(input: {
 | Configured illustration root parent is missing | Create the root directory before conversion. |
 | Configured illustration root is a file, not a directory | Return/persist `failed` with `error_stage='image_storage'`; do not create a ready card. |
 | Input bytes cannot be decoded/converted by Sharp | Return/persist `failed` with `error_stage='image_conversion'`; remove temp files; do not create a ready card. |
-| Final rename/read/stat fails | Return/persist `failed` with `error_stage='image_storage'`; remove temp/final partial files. |
+| Final rename/write/stat fails | Return/persist `failed` with `error_stage='image_storage'`; remove temp/final partial files. |
 | WebP storage succeeds but card DB write fails | Remove the stored WebP and record the attempt as `failed`; do not leave an orphan durable asset. |
+| Regenerating a canonical card replaces an old safe generated WebP path | Keep the new DB path and remove the old local WebP file after successful persistence. |
+| Legacy DB has duplicate `(sentence_id, style_version)` card rows before the unique index migration | Deterministically keep one canonical row, remove dependent view rows for duplicates, then create the unique index. |
+| `cards.illustration_path` contains an external URL, absolute path, traversal-like value, or non-UUID filename | Public `illustrationUrl` is `null`; do not expose the unsafe value to the client. |
 | Public route receives a traversal or non-UUID filename | Return `404`; do not read from the filesystem. |
 | Public route receives a valid filename for a missing file | Return `404`. |
-| Public route receives a valid stored WebP filename | Return `200` with `Content-Type: image/webp`. |
+| Public route receives a valid stored WebP filename | Stream a `200` response with `Content-Type: image/webp`. |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: controlled xAI generation returns valid image bytes; storage writes one `.webp`, `cards.illustration_path` becomes `/generated-illustrations/<uuid>.webp`, and the returned card has `illustrationUrl`.
 - Good: conversion fails for invalid image bytes; the attempt row records `image_conversion`, no ready card exists, and no durable WebP remains.
+- Good: regenerating the same sentence/style replaces the canonical card's `illustration_path` and removes the superseded generated WebP.
 - Good: a stored WebP can be fetched through the same-origin public route with `image/webp`.
 - Base: seeded mock ready cards keep `illustration_path=null` and remain valid public ready cards.
+- Base: unsafe legacy `illustration_path` values are treated as `illustrationUrl: null` while the row remains otherwise usable.
 - Bad: writing raw `b64_json`, original generated bytes, or WebP blobs into SQLite.
 - Bad: persisting `C:\...\data\generated-illustrations\x.webp` or `/var/.../x.webp` in `cards.illustration_path`.
+- Bad: exposing `https://...`, `//...`, `/generated-illustrations/../x.webp`, or a non-UUID filename as public `illustrationUrl`.
 - Bad: path-joining an unvalidated route filename and letting `../` escape the data root.
 
 ### 6. Tests Required
@@ -807,9 +824,12 @@ async function generateReadyCardForHitokotoSentence(input: {
 For changes to this path, add or update behavior tests that assert:
 
 - A controlled successful generation creates one ready card with `illustrationUrl`, writes a local `.webp`, and leaves no temporary/source files behind.
+- Regenerating the same sentence/style keeps one canonical card and removes the replaced local WebP.
 - `cards.illustration_path` stores the same-origin public path and SQLite never stores raw base64 or image blobs.
+- Unsafe `cards.illustration_path` values are not exposed by `GET /api/ready-card`; the public DTO returns `illustrationUrl: null`.
 - Conversion failure records `status='failed'`, `error_stage='image_conversion'`, no ready card, and no durable WebP.
 - Storage failure records `status='failed'`, `error_stage='image_storage'`, no ready card, and sanitized error text.
+- Provider image generation failures still retry the documented number of attempts and do not write partial image metadata.
 - The public route serves valid WebP assets and rejects missing/invalid/traversal filenames with `404`.
 - `GET /api/ready-card` and `/` expose/render `illustrationUrl` for stored cards while null-image seed cards still render.
 - `pnpm test:xai`, `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
