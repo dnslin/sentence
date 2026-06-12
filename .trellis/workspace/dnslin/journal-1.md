@@ -407,8 +407,8 @@ Implemented the independent pregenerated ready-pool worker with SQLite-backed da
 
 | Hash | Message |
 |------|---------|
-| `c1f8544` | (see git log) |
-| `683d6a8` | (see git log) |
+| `22cbb1a` | (see git log) |
+| `ae52081` | (see git log) |
 
 ### Testing
 

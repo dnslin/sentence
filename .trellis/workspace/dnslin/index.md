@@ -29,7 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
-| 12 | 2026-06-12 | Issue 9 ready-pool worker | `c1f8544`, `683d6a8` | `issue-9-pregenerated-pool-worker` |
+| 12 | 2026-06-12 | Issue 9 ready-pool worker | `22cbb1a`, `ae52081` | `issue-9-pregenerated-pool-worker` |
 | 11 | 2026-06-12 | Slice 07 generated WebP storage | `078670b`, `e5b03dd`, `22f6fea` | `issue-8-local-webp-storage` |
 | 10 | 2026-06-12 | Implement xAI generation smoke path | `f61a3ca`, `b18509c`, `b65febc`, `f46495c` | `issue-7-xai-generation-smoke` |
 | 9 | 2026-06-12 | Implement Hitokoto sentence ingestion | `92cf429`, `142a133`, `2c4a54c` | `issue-6-hitokoto-fetch-sentence-normalization` |
