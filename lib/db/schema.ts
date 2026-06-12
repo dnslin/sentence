@@ -5,6 +5,7 @@ import {
   integer,
   sqliteTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
 export const sentences = sqliteTable("sentences", {
@@ -13,6 +14,34 @@ export const sentences = sqliteTable("sentences", {
   source: text("source").notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
 })
+
+export const hitokotoSentenceMetadata = sqliteTable(
+  "hitokoto_sentence_metadata",
+  {
+    sentenceId: text("sentence_id")
+      .primaryKey()
+      .references(() => sentences.id),
+    hitokotoUuid: text("hitokoto_uuid"),
+    sourceIdentity: text("source_identity").notNull(),
+    hitokotoId: integer("hitokoto_id"),
+    type: text("type"),
+    fromText: text("from_text"),
+    fromWho: text("from_who"),
+    creator: text("creator"),
+    creatorUid: integer("creator_uid"),
+    reviewer: integer("reviewer"),
+    commitFrom: text("commit_from"),
+    hitokotoCreatedAt: text("hitokoto_created_at"),
+    length: integer("length"),
+    fetchedAt: integer("fetched_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    uniqueIndex("hitokoto_sentence_metadata_uuid_idx").on(table.hitokotoUuid),
+    uniqueIndex("hitokoto_sentence_metadata_identity_idx").on(
+      table.sourceIdentity
+    ),
+  ]
+)
 
 export const cards = sqliteTable(
   "cards",
@@ -60,5 +89,7 @@ export const readyCardViews = sqliteTable(
 )
 
 export type CardRow = typeof cards.$inferSelect
+export type HitokotoSentenceMetadataRow =
+  typeof hitokotoSentenceMetadata.$inferSelect
 export type ReadyCardViewRow = typeof readyCardViews.$inferSelect
 export type SentenceRow = typeof sentences.$inferSelect
