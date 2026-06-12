@@ -65,6 +65,10 @@ export const cards = sqliteTable(
       sql`${table.accent} in ('dawn', 'rain', 'moon')`
     ),
     index("cards_ready_lookup_idx").on(table.status, table.createdAt, table.id),
+    uniqueIndex("cards_sentence_style_idx").on(
+      table.sentenceId,
+      table.styleVersion
+    ),
   ]
 )
 
@@ -120,7 +124,7 @@ export const generationAttempts = sqliteTable(
     ),
     check(
       "generation_attempts_error_stage_check",
-      sql`${table.errorStage} is null or ${table.errorStage} in ('prompt_rewrite', 'image_generation', 'image_validation', 'smoke_write')`
+      sql`${table.errorStage} is null or ${table.errorStage} in ('prompt_rewrite', 'image_generation', 'image_validation', 'smoke_write', 'image_storage', 'image_conversion')`
     ),
     index("generation_attempts_sentence_idx").on(
       table.sentenceId,

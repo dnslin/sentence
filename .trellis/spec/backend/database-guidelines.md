@@ -604,7 +604,7 @@ generation_attempts(
   image_mime_type text nullable,
   image_byte_length integer nullable,
   image_sha256 text nullable,
-  error_stage text nullable check(error_stage in ('prompt_rewrite','image_generation','image_validation','smoke_write') or error_stage is null),
+  error_stage text nullable check(error_stage in ('prompt_rewrite','image_generation','image_validation','smoke_write','image_storage','image_conversion') or error_stage is null),
   error_message text nullable,
   image_generation_attempts integer not null,
   created_at integer not null,
@@ -688,5 +688,154 @@ await client.images.generate({
   n: 1,
   aspect_ratio: "1:1",
   resolution: "1k",
+})
+```
+
+---
+
+## Scenario: Generated illustration local WebP storage and public serving
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches generated illustration storage, WebP conversion, generated ready-card persistence, `cards.illustration_path`, the public generated-illustration route, or storage/conversion failure handling.
+
+This path completes the 图文绑定 storage loop after successful xAI generation:
+
+```text
+Hitokoto sentence row → xAI base64 image → decoded bytes → local WebP file → cards.illustration_path public URL → /generated-illustrations/<uuid>.webp
+```
+
+### 2. Signatures
+
+**Focused test command**
+
+```json
+{
+  "test:xai": "node --import tsx --test node-tests/xai-generation-pipeline.test.ts"
+}
+```
+
+**Environment key**
+
+- `JUHUA_GENERATED_ILLUSTRATIONS_DIR?: string` — optional generated-illustration data root.
+- Default when unset: `process.cwd()/data/generated-illustrations`.
+
+**Storage constants and helpers**
+
+```typescript
+const generatedIllustrationWebpQuality = 88
+const generatedIllustrationPublicPathPrefix = "/generated-illustrations"
+
+function resolveGeneratedIllustrationRoot(): string
+function isValidGeneratedIllustrationFilename(filename: string): boolean
+function resolveGeneratedIllustrationFilePath(filename: string): string | null
+
+async function storeGeneratedIllustrationAsWebp(input: {
+  imageBytes: Buffer
+  filename?: string
+}): Promise<{
+  filename: string
+  publicPath: string
+  filePath: string
+  byteLength: number
+  sha256: string
+}>
+```
+
+**Ready-card generation boundary**
+
+```typescript
+async function generateReadyCardForHitokotoSentence(input: {
+  client: DatabaseClient
+  fetchFn?: HitokotoFetch
+  xaiClient: XaiGenerationClient
+}): Promise<
+  | { status: "ready"; card: PublicReadyCard; illustration: { publicPath: string; byteLength: number; sha256: string } }
+  | { status: "failed"; error: { stage: "image_generation" | "image_validation" | "image_storage" | "image_conversion" | "prompt_rewrite"; message: string } }
+>
+```
+
+**Public image route**
+
+- `GET /generated-illustrations/[filename]`
+- Valid filename shape: lowercase UUID plus `.webp`, e.g. `00000000-0000-4000-8000-000000000001.webp`.
+- Success headers include `Content-Type: image/webp` and immutable public cache.
+
+**Database contracts**
+
+- `cards.illustration_path` stores the same-origin public path such as `/generated-illustrations/<uuid>.webp`, not an absolute filesystem path.
+- `cards(sentence_id, style_version)` has a unique index for the canonical 图文绑定 under the current card shape/style.
+- `generation_attempts.error_stage` includes `image_storage` and `image_conversion` for WebP storage failures.
+
+### 3. Contracts
+
+- Convert successful generated image bytes to WebP with quality `88` before a card enters the ready pool.
+- Store generated WebP files under `JUHUA_GENERATED_ILLUSTRATIONS_DIR` or the default `data/generated-illustrations`; do not write runtime generated assets into Next.js `public/`.
+- Persist only metadata and the public path in SQLite. Do not store raw base64, original model bytes, or WebP blobs in SQLite.
+- Use temporary files for conversion and atomically move the final `.webp` into place.
+- After successful conversion, retain only the final WebP file. Temporary/source conversion files must be removed.
+- If ready-card persistence fails after WebP storage succeeds, remove the just-stored WebP before recording the failed attempt.
+- The public image route must validate the filename before resolving a path and must never expose absolute paths in errors.
+- Existing non-ready smoke generation remains valid; only `generateReadyCardForHitokotoSentence(...)` may mark a generated card ready.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `JUHUA_GENERATED_ILLUSTRATIONS_DIR` missing | Use `process.cwd()/data/generated-illustrations`. |
+| Configured illustration root parent is missing | Create the root directory before conversion. |
+| Configured illustration root is a file, not a directory | Return/persist `failed` with `error_stage='image_storage'`; do not create a ready card. |
+| Input bytes cannot be decoded/converted by Sharp | Return/persist `failed` with `error_stage='image_conversion'`; remove temp files; do not create a ready card. |
+| Final rename/read/stat fails | Return/persist `failed` with `error_stage='image_storage'`; remove temp/final partial files. |
+| WebP storage succeeds but card DB write fails | Remove the stored WebP and record the attempt as `failed`; do not leave an orphan durable asset. |
+| Public route receives a traversal or non-UUID filename | Return `404`; do not read from the filesystem. |
+| Public route receives a valid filename for a missing file | Return `404`. |
+| Public route receives a valid stored WebP filename | Return `200` with `Content-Type: image/webp`. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: controlled xAI generation returns valid image bytes; storage writes one `.webp`, `cards.illustration_path` becomes `/generated-illustrations/<uuid>.webp`, and the returned card has `illustrationUrl`.
+- Good: conversion fails for invalid image bytes; the attempt row records `image_conversion`, no ready card exists, and no durable WebP remains.
+- Good: a stored WebP can be fetched through the same-origin public route with `image/webp`.
+- Base: seeded mock ready cards keep `illustration_path=null` and remain valid public ready cards.
+- Bad: writing raw `b64_json`, original generated bytes, or WebP blobs into SQLite.
+- Bad: persisting `C:\...\data\generated-illustrations\x.webp` or `/var/.../x.webp` in `cards.illustration_path`.
+- Bad: path-joining an unvalidated route filename and letting `../` escape the data root.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- A controlled successful generation creates one ready card with `illustrationUrl`, writes a local `.webp`, and leaves no temporary/source files behind.
+- `cards.illustration_path` stores the same-origin public path and SQLite never stores raw base64 or image blobs.
+- Conversion failure records `status='failed'`, `error_stage='image_conversion'`, no ready card, and no durable WebP.
+- Storage failure records `status='failed'`, `error_stage='image_storage'`, no ready card, and sanitized error text.
+- The public route serves valid WebP assets and rejects missing/invalid/traversal filenames with `404`.
+- `GET /api/ready-card` and `/` expose/render `illustrationUrl` for stored cards while null-image seed cards still render.
+- `pnpm test:xai`, `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+await writeFile("public/generated/card.png", image.bytes)
+await client.db.insert(cards).values({
+  illustrationPath: "C:/app/public/generated/card.png",
+  status: "ready",
+})
+```
+
+#### Correct
+
+```typescript
+const illustration = await storeGeneratedIllustrationAsWebp({
+  imageBytes: generation.image.bytes,
+})
+await upsertGeneratedReadyCard({
+  client,
+  sentenceId: generation.sentence.id,
+  sentenceText: generation.sentence.text,
+  illustrationUrl: illustration.publicPath,
 })
 ```

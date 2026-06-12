@@ -23,6 +23,7 @@ type ReadyCardRow = {
   sceneLabel: string
   accent: string
   status: string
+  illustrationUrl: string | null
 }
 
 type ValidReadyCardRow = ReadyCardRow & {
@@ -47,6 +48,7 @@ function toPublicReadyCard(row: ValidReadyCardRow): PublicReadyCard {
     sceneLabel: row.sceneLabel,
     accent: row.accent,
     status: row.status,
+    illustrationUrl: row.illustrationUrl,
   }
 }
 
@@ -80,10 +82,13 @@ async function loadReadyCards(client: DatabaseClient) {
       sceneLabel: cards.sceneLabel,
       accent: cards.accent,
       status: cards.status,
+      illustrationUrl: cards.illustrationPath,
     })
     .from(cards)
     .innerJoin(sentences, eq(cards.sentenceId, sentences.id))
-    .where(and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents)))
+    .where(
+      and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents))
+    )
     .orderBy(asc(cards.createdAt), asc(cards.id))
     .limit(readyPoolLimit)
 
@@ -113,17 +118,15 @@ async function pruneVisitorViews(client: DatabaseClient, visitorKey: string) {
 
   if (retainedRows.length < retainedViewsPerVisitor) return
 
-  await client.db
-    .delete(readyCardViews)
-    .where(
-      and(
-        eq(readyCardViews.visitorKey, visitorKey),
-        notInArray(
-          readyCardViews.id,
-          retainedRows.map((row) => row.id)
-        )
+  await client.db.delete(readyCardViews).where(
+    and(
+      eq(readyCardViews.visitorKey, visitorKey),
+      notInArray(
+        readyCardViews.id,
+        retainedRows.map((row) => row.id)
       )
     )
+  )
 }
 
 async function getNextReadyCardForVisitorInTransaction(
