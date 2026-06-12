@@ -3,11 +3,8 @@ export const hitokotoMinLength = 6
 export const hitokotoMaxLength = 30
 export const hitokotoCategories = ["d", "e", "i", "k"] as const
 
-export type HitokotoCategory = (typeof hitokotoCategories)[number]
-
 export type NormalizedHitokotoSentence = {
   text: string
-  source: "hitokoto"
   hitokotoUuid: string | null
   sourceIdentity: string
   metadata: {
@@ -159,7 +156,6 @@ export function normalizeHitokotoResponse(
 
   return {
     text,
-    source: "hitokoto",
     hitokotoUuid,
     sourceIdentity,
     metadata: {

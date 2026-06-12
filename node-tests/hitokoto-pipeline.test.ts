@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { eq } from "drizzle-orm"
+import { count, eq } from "drizzle-orm"
 
 import { hitokotoSentenceMetadata, sentences } from "@/lib/db/schema"
 import { createDatabaseClient } from "@/lib/db/client"
@@ -34,8 +34,9 @@ const baseHitokotoResponse = {
 let previousDatabasePath: string | undefined
 let tempDir: string
 let client: DatabaseClient
+let migrationImportSequence = 0
 
-function createControlledFetch(responseBody: unknown, seenUrls: string[]) {
+function createControlledFetch(responseBody: unknown, seenUrls: string[] = []) {
   return (async (url: string) => {
     seenUrls.push(url)
     return {
@@ -49,14 +50,16 @@ function createControlledFetch(responseBody: unknown, seenUrls: string[]) {
 }
 
 async function countRows() {
-  const sentenceRows = await client.db.select({ id: sentences.id }).from(sentences)
-  const metadataRows = await client.db
-    .select({ sentenceId: hitokotoSentenceMetadata.sentenceId })
+  const [sentenceCount] = await client.db
+    .select({ value: count() })
+    .from(sentences)
+  const [metadataCount] = await client.db
+    .select({ value: count() })
     .from(hitokotoSentenceMetadata)
 
   return {
-    sentences: sentenceRows.length,
-    metadata: metadataRows.length,
+    sentences: sentenceCount?.value ?? 0,
+    metadata: metadataCount?.value ?? 0,
   }
 }
 
@@ -65,7 +68,7 @@ beforeEach(async () => {
   tempDir = mkdtempSync(join(tmpdir(), "juhua-hitokoto-"))
   process.env.JUHUA_DATABASE_PATH = join(tempDir, "juhua.sqlite")
 
-  await import(`../scripts/migrate.ts?test=${Date.now()}`)
+  await import(`../scripts/migrate.ts?test=${++migrationImportSequence}`)
   client = createDatabaseClient()
 })
 
@@ -130,14 +133,14 @@ describe("Hitokoto sentence ingestion", () => {
   test("reuses the existing sentence for duplicate Hitokoto UUIDs", async () => {
     const first = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(baseHitokotoResponse, []),
+      fetchFn: createControlledFetch(baseHitokotoResponse),
     })
     const second = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(
-        { ...baseHitokotoResponse, hitokoto: "山河远阔，人间烟火" },
-        []
-      ),
+      fetchFn: createControlledFetch({
+        ...baseHitokotoResponse,
+        hitokoto: "山河远阔，人间烟火",
+      }),
     })
 
     assert.equal(second.inserted, false)
@@ -163,11 +166,11 @@ describe("Hitokoto sentence ingestion", () => {
 
     const first = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(firstResponse, []),
+      fetchFn: createControlledFetch(firstResponse),
     })
     const second = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(secondResponse, []),
+      fetchFn: createControlledFetch(secondResponse),
     })
 
     assert.equal(first.hitokotoUuid, null)
@@ -193,11 +196,11 @@ describe("Hitokoto sentence ingestion", () => {
 
     const first = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(firstResponse, []),
+      fetchFn: createControlledFetch(firstResponse),
     })
     const second = await fetchAndStoreHitokotoSentence({
       client,
-      fetchFn: createControlledFetch(secondResponse, []),
+      fetchFn: createControlledFetch(secondResponse),
     })
 
     assert.equal(first.hitokotoUuid, null)
@@ -210,10 +213,10 @@ describe("Hitokoto sentence ingestion", () => {
     await assert.rejects(
       fetchAndStoreHitokotoSentence({
         client,
-        fetchFn: createControlledFetch(
-          { ...baseHitokotoResponse, hitokoto: "太短" },
-          []
-        ),
+        fetchFn: createControlledFetch({
+          ...baseHitokotoResponse,
+          hitokoto: "太短",
+        }),
       }),
       HitokotoNormalizationError
     )

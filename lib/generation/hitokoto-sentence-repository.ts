@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto"
 import { eq, or } from "drizzle-orm"
 
 import { hitokotoSentenceMetadata, sentences } from "@/lib/db/schema"
+import { runImmediateTransaction, type DatabaseClient } from "@/lib/db/client"
 
-import type { DatabaseClient } from "@/lib/db/client"
 import type { NormalizedHitokotoSentence } from "./hitokoto-client"
 
 export type StoredHitokotoSentence = {
@@ -62,7 +62,7 @@ async function insertHitokotoSentence(
   await client.db.insert(sentences).values({
     id: sentenceId,
     text: sentence.text,
-    source: sentence.source,
+    source: "hitokoto",
     createdAt: now,
   })
 
@@ -96,15 +96,13 @@ export async function storeHitokotoSentence(
   client: DatabaseClient,
   sentence: NormalizedHitokotoSentence
 ): Promise<StoredHitokotoSentence> {
-  client.sqlite.exec("BEGIN IMMEDIATE")
+  const existing = await findStoredHitokotoSentence(client, sentence)
+  if (existing) return existing
 
-  try {
-    const existing = await findStoredHitokotoSentence(client, sentence)
-    const stored = existing ?? (await insertHitokotoSentence(client, sentence))
-    client.sqlite.exec("COMMIT")
-    return stored
-  } catch (error) {
-    client.sqlite.exec("ROLLBACK")
-    throw error
-  }
+  return runImmediateTransaction(client, async () => {
+    const existingInTransaction = await findStoredHitokotoSentence(client, sentence)
+    if (existingInTransaction) return existingInTransaction
+
+    return insertHitokotoSentence(client, sentence)
+  })
 }
