@@ -21,6 +21,8 @@
     "test:e2e:reset-db": "tsx scripts/reset-e2e-database.ts",
     "test:hitokoto": "node --import tsx --test node-tests/hitokoto-pipeline.test.ts",
     "test:xai": "node --import tsx --test node-tests/xai-generation-pipeline.test.ts",
+    "test:worker": "node --import tsx --test node-tests/ready-pool-worker.test.ts",
+    "worker:ready-pool": "tsx scripts/run-ready-pool-worker.ts",
     "smoke:xai": "tsx scripts/smoke-xai-generation.ts"
   },
   "dependencies": {

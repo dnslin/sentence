@@ -92,6 +92,22 @@ export const readyCardViews = sqliteTable(
   ]
 )
 
+export const readyPoolGenerationDays = sqliteTable(
+  "ready_pool_generation_days",
+  {
+    dayKey: text("day_key").primaryKey(),
+    generationCount: integer("generation_count").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    check(
+      "ready_pool_generation_days_count_check",
+      sql`${table.generationCount} >= 0`
+    ),
+  ]
+)
+
 export const generationAttempts = sqliteTable(
   "generation_attempts",
   {
@@ -139,4 +155,6 @@ export type GenerationAttemptRow = typeof generationAttempts.$inferSelect
 export type HitokotoSentenceMetadataRow =
   typeof hitokotoSentenceMetadata.$inferSelect
 export type ReadyCardViewRow = typeof readyCardViews.$inferSelect
+export type ReadyPoolGenerationDayRow =
+  typeof readyPoolGenerationDays.$inferSelect
 export type SentenceRow = typeof sentences.$inferSelect

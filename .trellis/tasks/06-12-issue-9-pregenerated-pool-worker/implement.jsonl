@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Backend SQLite/Drizzle, generation pipeline, WebP storage, and ready-card contracts relevant to the worker."}
+{"file":"docs/adr/0001-self-host-nextjs-with-docker-compose.md","reason":"Worker must run independently from the web process as a future Docker Compose service."}
+{"file":"docs/adr/0002-hybrid-pregenerated-card-pool.md","reason":"Defines ready-pool threshold below 50 and target around 200."}
+{"file":"docs/adr/0003-sqlite-and-local-webp-storage.md","reason":"Defines SQLite metadata/rate-limit/generation-status storage and local WebP asset direction."}
+{"file":".trellis/tasks/archive/2026-06/06-12-issue-8-local-webp-storage/design.md","reason":"Prior slice establishes generated ready-card persistence and failure boundaries reused by this worker."}
