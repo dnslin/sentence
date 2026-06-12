@@ -1,24 +1,14 @@
-import { and, count, eq, inArray, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 
-import { readyCardAccents } from "@/lib/cards/public-ready-card"
+import { countPublicReadyCards } from "@/lib/cards/ready-card-repository"
 import { runImmediateTransaction, type DatabaseClient } from "@/lib/db/client"
-import { cards, readyPoolGenerationDays, sentences } from "@/lib/db/schema"
+import { readyPoolGenerationDays } from "@/lib/db/schema"
+
+export { countPublicReadyCards as countReadyPoolInventory }
 
 export type DailyGenerationReservation =
   | { status: "reserved"; dayKey: string; generationCount: number }
   | { status: "cap_exhausted"; dayKey: string; generationCount: number }
-
-export async function countReadyPoolInventory(client: DatabaseClient) {
-  const [row] = await client.db
-    .select({ value: count() })
-    .from(cards)
-    .innerJoin(sentences, eq(cards.sentenceId, sentences.id))
-    .where(
-      and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents))
-    )
-
-  return row?.value ?? 0
-}
 
 export async function reserveDailyGenerationCapacity(input: {
   client: DatabaseClient

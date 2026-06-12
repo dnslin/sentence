@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check fixes against final worker code-spec and database/generation contracts."}
+{"file":"docs/adr/0001-self-host-nextjs-with-docker-compose.md","reason":"Verify worker remains independently runnable from web and suitable for future worker service."}
+{"file":"docs/adr/0002-hybrid-pregenerated-card-pool.md","reason":"Verify replenishment threshold and target behavior remain intact after fixes."}
+{"file":"docs/adr/0003-sqlite-and-local-webp-storage.md","reason":"Verify failure/cap metadata remains SQLite-backed and generated assets semantics are unchanged."}

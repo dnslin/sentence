@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 
-import { and, asc, desc, eq, gt, inArray, notInArray } from "drizzle-orm"
+import { and, asc, count, desc, eq, gt, inArray, notInArray } from "drizzle-orm"
 
 import {
   isReadyCardAccent,
@@ -75,6 +75,18 @@ function selectLeastRecentlySeenCard(
     if (leftSeenAt !== rightSeenAt) return leftSeenAt - rightSeenAt
     return left.id.localeCompare(right.id)
   })[0]
+}
+
+export async function countPublicReadyCards(client: DatabaseClient) {
+  const [row] = await client.db
+    .select({ value: count() })
+    .from(cards)
+    .innerJoin(sentences, eq(cards.sentenceId, sentences.id))
+    .where(
+      and(eq(cards.status, "ready"), inArray(cards.accent, readyCardAccents))
+    )
+
+  return row?.value ?? 0
 }
 
 async function loadReadyCards(client: DatabaseClient) {

@@ -3,17 +3,47 @@ import { loadXaiConfig } from "@/lib/generation/xai-config"
 import {
   createProductionReadyPoolGenerator,
   runReadyPoolWorkerLoop,
+  type ReadyPoolStopSignal,
 } from "@/lib/worker/ready-pool-worker"
 
-const stopSignal = { stopped: false }
+const stopSignal: { stopped: boolean } = { stopped: false }
+const sleepAbortController = new AbortController()
 
-process.on("SIGINT", () => {
+function requestStop() {
   stopSignal.stopped = true
-})
-process.on("SIGTERM", () => {
-  stopSignal.stopped = true
-})
+  sleepAbortController.abort()
+}
 
+function createInterruptibleSleep(abortSignal: AbortSignal) {
+  return ({
+    durationMs,
+    stopSignal,
+  }: {
+    durationMs: number
+    stopSignal?: ReadyPoolStopSignal
+  }) =>
+    new Promise<void>((resolve) => {
+      if (stopSignal?.stopped || abortSignal.aborted) {
+        resolve()
+        return
+      }
+
+      const timeout = setTimeout(resolve, durationMs)
+      abortSignal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timeout)
+          resolve()
+        },
+        { once: true }
+      )
+    })
+}
+
+process.on("SIGINT", requestStop)
+process.on("SIGTERM", requestStop)
+
+let hasConfig = true
 try {
   loadXaiConfig()
 } catch {
@@ -21,22 +51,28 @@ try {
     "XAI_API_KEY is required for the ready-pool worker. Set it in the server environment before running pnpm worker:ready-pool."
   )
   process.exitCode = 1
-  process.exit()
+  hasConfig = false
 }
 
-await import("./migrate")
+if (hasConfig) {
+  await import("./migrate")
 
-const client = createDatabaseClient()
+  const client = createDatabaseClient()
 
-try {
-  await runReadyPoolWorkerLoop({
-    client,
-    generateReadyCard: createProductionReadyPoolGenerator(client),
-    stopSignal,
-    onSummary(summary) {
-      console.log(JSON.stringify(summary))
-    },
-  })
-} finally {
-  client.sqlite.close()
+  try {
+    await runReadyPoolWorkerLoop({
+      client,
+      generateReadyCard: createProductionReadyPoolGenerator(client),
+      stopSignal,
+      sleep: createInterruptibleSleep(sleepAbortController.signal),
+      onSummary(summary) {
+        console.log(JSON.stringify(summary))
+      },
+      onError(error) {
+        console.error(JSON.stringify(error))
+      },
+    })
+  } finally {
+    client.sqlite.close()
+  }
 }
