@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 10
+- **Total Sessions**: 11
 - **Last Active**: 2026-06-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~354 | Active |
+| `journal-1.md` | ~389 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 11 | 2026-06-12 | Slice 07 generated WebP storage | `078670b`, `e5b03dd`, `22f6fea` | `issue-8-local-webp-storage` |
 | 10 | 2026-06-12 | Implement xAI generation smoke path | `f61a3ca`, `b18509c`, `b65febc`, `f46495c` | `issue-7-xai-generation-smoke` |
 | 9 | 2026-06-12 | Implement Hitokoto sentence ingestion | `92cf429`, `142a133`, `2c4a54c` | `issue-6-hitokoto-fetch-sentence-normalization` |
 | 8 | 2026-06-11 | Issue 5 refresh flow recent-card avoidance | `bbcbd55`, `2f4f7ff`, `3975849`, `5929e47` | `issue-5-refresh-flow-recent-card-avoidance` |

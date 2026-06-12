@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check SQLite/Drizzle contracts, migrations, generation error states, and ready-card API behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Check browser-visible rendering, accessibility, and placeholder copy regressions."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Check route params and public DTO narrowing remain type-safe."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check no duplicated DTO/path/error normalization logic was introduced."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Check the new illustrationUrl field remains consistent across storage, DB, API, and UI."}

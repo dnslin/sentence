@@ -300,6 +300,10 @@ export function QuietGalleryCard({
 ### 3. Contracts
 
 - The client may replace the rendered 图文卡片 only after `/api/ready-card` returns `ok` and the JSON narrows through `isReadyCardResponse`.
+- `PublicReadyCard` includes `illustrationUrl: string | null`; frontend code must consume this shared DTO rather than redefine the API response shape.
+- API code must expose only safe same-origin generated-illustration paths as `illustrationUrl`; unsafe stored values must reach the frontend as `null`.
+- When `illustrationUrl` is a string, the card renderer must display a real image using that URL and the card's `sceneLabel` as the accessible label/alt text.
+- When `illustrationUrl` is `null`, the card renderer must preserve the existing CSS fallback illustration and expose the same `sceneLabel` through `role="img"`.
 - While refresh is pending, the button must be disabled or otherwise prevent duplicate concurrent requests.
 - Pending state must be visible through public UI, such as button copy and `aria-busy` on the card article.
 - Failure must keep the current card visible, announce that refresh failed, and re-enable retry.
@@ -311,6 +315,8 @@ export function QuietGalleryCard({
 | Condition | Required behavior |
 | --- | --- |
 | API returns valid `{ card }` | Replace sentence and illustration accessible label together. |
+| API returns `illustrationUrl` as a string | Render a real image whose URL matches `illustrationUrl` and whose accessible name/alt is `sceneLabel`. |
+| API returns `illustrationUrl: null` | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`. |
 | API returns non-OK status | Keep current card, announce failure, re-enable refresh. |
 | API returns invalid JSON shape | Keep current card, announce failure, re-enable refresh. |
 | User clicks repeatedly while pending | Send at most one in-flight refresh request. |
@@ -319,16 +325,21 @@ export function QuietGalleryCard({
 
 ### 5. Good/Base/Bad Cases
 
-- Good: clicking `再来一张` changes both `“sentence”` text and `role="img"` accessible label after a successful API response.
+- Good: clicking `再来一张` changes both `“sentence”` text and image accessible label after a successful API response.
+- Good: a card with `illustrationUrl` renders a browser-fetchable `<img>` using the same-origin stored WebP URL.
+- Base: a seeded/mock card with `illustrationUrl: null` renders the existing CSS fallback and remains accessible through `role="img"`.
 - Base: a delayed API response shows `刷新生成中`, disables the button, and leaves the current card visible.
 - Bad: optimistically replacing only the sentence before the server returns a canonical 图文绑定.
 - Bad: catching refresh failure by clearing the card or showing fake empty-stock UI.
+- Bad: rendering a broken `<img src="">` for null-image seed cards instead of preserving the fallback.
 
 ### 6. Tests Required
 
 For refresh UI work, use browser-visible tests that assert:
 
 - Clicking `再来一张` waits for `/api/ready-card` and replaces sentence plus image accessible label.
+- A ready-card response with `illustrationUrl` renders a real image whose `src` is the public WebP URL and whose accessible name is the scene label.
+- A ready-card response with `illustrationUrl: null` keeps the CSS fallback illustration accessible through the scene label.
 - A delayed response shows pending copy/state and prevents duplicate requests.
 - A failed response keeps the current card, announces failure, and allows retry.
 - Placeholder actions not implemented in the current slice still announce truthful placeholder copy.
@@ -343,12 +354,25 @@ const body = await response.json()
 setCurrentCard(body.card)
 ```
 
+```tsx
+// Breaks seeded ready cards whose illustrationUrl is intentionally null.
+<img src={card.illustrationUrl ?? ""} alt={card.sceneLabel} />
+```
+
 #### Correct
 
 ```tsx
 const body: unknown = await response.json()
 if (!isReadyCardResponse(body)) throw new Error("invalid ready-card response")
 setCurrentCard(body.card)
+```
+
+```tsx
+{card.illustrationUrl ? (
+  <img src={card.illustrationUrl} alt={card.sceneLabel} />
+) : (
+  <div role="img" aria-label={card.sceneLabel}>{/* fallback art */}</div>
+)}
 ```
 
 ---

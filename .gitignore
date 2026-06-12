@@ -13,9 +13,10 @@
 /test-results/
 /playwright-report/
 
-# local databases
+# local databases and generated assets
 /data/*.sqlite*
 /data/*.db*
+/data/generated-illustrations/
 /test-data/
 
 # next.js

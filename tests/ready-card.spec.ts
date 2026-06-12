@@ -1,3 +1,6 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+
 import { expect, test } from "@playwright/test"
 
 import {
@@ -8,9 +11,24 @@ import { seedReadyCard, seedReadyCardStore } from "@/lib/cards/seed-ready-card"
 import { createDatabaseClient } from "@/lib/db/client"
 import { cards, readyCardViews, sentences } from "@/lib/db/schema"
 
+import { sql } from "drizzle-orm"
+
 import { seedExtraReadyCardFixtures } from "./ready-card-fixtures"
 
 const e2eDatabasePath = "test-data/e2e/juhua.sqlite"
+const generatedIllustrationRoot = join(
+  process.cwd(),
+  "data",
+  "generated-illustrations"
+)
+const generatedIllustrationFilename =
+  "11111111-1111-4111-8111-111111111111.webp"
+const generatedIllustrationUrl = `/generated-illustrations/${generatedIllustrationFilename}`
+const generatedIllustrationBytes = Buffer.from([
+  0x52, 0x49, 0x46, 0x46, 0x1a, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56,
+  0x50, 0x38, 0x4c, 0x0d, 0x00, 0x00, 0x00, 0x2f, 0x00, 0x00, 0x00, 0x10, 0x07,
+  0x10, 0x11, 0x11, 0x88, 0x88, 0xfe, 0x07, 0x00,
+])
 
 const seedCard = {
   id: seedReadyCard.card.id,
@@ -18,6 +36,7 @@ const seedCard = {
   sceneLabel: seedReadyCard.card.sceneLabel,
   accent: seedReadyCard.card.accent,
   status: seedReadyCard.card.status,
+  illustrationUrl: null,
 } as const
 
 async function withE2eDatabase<T>(
@@ -48,6 +67,82 @@ async function seedE2eReadyCardStore() {
   })
 }
 
+async function seedGeneratedIllustrationReadyCard() {
+  mkdirSync(generatedIllustrationRoot, { recursive: true })
+  writeFileSync(
+    join(generatedIllustrationRoot, generatedIllustrationFilename),
+    generatedIllustrationBytes
+  )
+
+  await withE2eDatabase(async (client) => {
+    await client.db
+      .insert(sentences)
+      .values({
+        id: "test-generated-sentence",
+        text: "有一束光，正在纸上慢慢醒来。",
+        source: "test-fixture",
+        createdAt: new Date("2026-06-11T02:00:00.000Z"),
+      })
+      .onConflictDoUpdate({
+        target: sentences.id,
+        set: {
+          text: sql.raw("excluded.text"),
+          source: sql.raw("excluded.source"),
+        },
+      })
+    await client.db
+      .insert(cards)
+      .values({
+        id: "test-generated-card",
+        sentenceId: "test-generated-sentence",
+        status: "ready",
+        sceneLabel: "真实 WebP 插画场景",
+        accent: "dawn",
+        illustrationPath: generatedIllustrationUrl,
+        styleVersion: "quiet-gallery-v1",
+        createdAt: new Date("2026-06-11T02:00:00.000Z"),
+        updatedAt: new Date("2026-06-11T02:00:00.000Z"),
+      })
+      .onConflictDoUpdate({
+        target: cards.id,
+        set: {
+          sentenceId: sql.raw("excluded.sentence_id"),
+          status: sql.raw("excluded.status"),
+          sceneLabel: sql.raw("excluded.scene_label"),
+          accent: sql.raw("excluded.accent"),
+          illustrationPath: sql.raw("excluded.illustration_path"),
+          styleVersion: sql.raw("excluded.style_version"),
+          updatedAt: sql.raw("excluded.updated_at"),
+        },
+      })
+  })
+}
+
+async function seedUnsafeIllustrationPathReadyCard() {
+  await withE2eDatabase(async (client) => {
+    await client.db.delete(readyCardViews)
+    await client.db.delete(cards)
+    await client.db.delete(sentences)
+    await client.db.insert(sentences).values({
+      id: "test-unsafe-sentence",
+      text: "风从窗边经过，留下很轻的影子。",
+      source: "test-fixture",
+      createdAt: new Date("2026-06-11T03:00:00.000Z"),
+    })
+    await client.db.insert(cards).values({
+      id: "test-unsafe-card",
+      sentenceId: "test-unsafe-sentence",
+      status: "ready",
+      sceneLabel: "不安全插画路径场景",
+      accent: "moon",
+      illustrationPath: "https://example.com/unsafe.webp",
+      styleVersion: "quiet-gallery-v1",
+      createdAt: new Date("2026-06-11T03:00:00.000Z"),
+      updatedAt: new Date("2026-06-11T03:00:00.000Z"),
+    })
+  })
+}
+
 async function clearReadyCards() {
   await withE2eDatabase(async (client) => {
     await client.db.delete(readyCardViews)
@@ -66,9 +161,7 @@ async function getReadyCard(
 }
 
 async function fetchReadyCard(requestContext: {
-  get(
-    url: string
-  ): Promise<{
+  get(url: string): Promise<{
     status(): number
     json(): Promise<unknown>
     headers(): Record<string, string>
@@ -78,6 +171,9 @@ async function fetchReadyCard(requestContext: {
 }
 
 test.beforeEach(async () => {
+  rmSync(join(generatedIllustrationRoot, generatedIllustrationFilename), {
+    force: true,
+  })
   await seedE2eReadyCardStore()
 })
 
@@ -342,6 +438,77 @@ test("keeps seeding idempotent for a fresh public ready-card visitor", async ({
   } finally {
     await beforeVisitor.dispose()
     await afterVisitor.dispose()
+  }
+})
+
+test("serves a stored generated WebP through the public image route", async ({
+  request,
+}) => {
+  await seedGeneratedIllustrationReadyCard()
+
+  const response = await request.get(generatedIllustrationUrl)
+  expect(response.status()).toBe(200)
+  expect(response.headers()["content-type"]).toContain("image/webp")
+  expect(await response.body()).toEqual(generatedIllustrationBytes)
+
+  expect(
+    (await request.get("/generated-illustrations/../secret.webp")).status()
+  ).toBe(404)
+  expect(
+    (await request.get("/generated-illustrations/missing.webp")).status()
+  ).toBe(404)
+})
+
+test("exposes illustrationUrl and renders a real image for stored WebP cards", async ({
+  page,
+  playwright,
+}) => {
+  await clearReadyCards()
+  await seedGeneratedIllustrationReadyCard()
+  const visitor = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+  })
+
+  try {
+    const card = await getReadyCard(await fetchReadyCard(visitor))
+
+    expect(card).toMatchObject({
+      id: "test-generated-card",
+      illustrationUrl: generatedIllustrationUrl,
+      sceneLabel: "真实 WebP 插画场景",
+    })
+  } finally {
+    await visitor.dispose()
+  }
+
+  await clearReadyCards()
+  await seedGeneratedIllustrationReadyCard()
+  await page.goto("/")
+
+  const image = page.getByRole("img", { name: "真实 WebP 插画场景" })
+  await expect(image).toBeVisible()
+  await expect(image).toHaveAttribute("src", generatedIllustrationUrl)
+  await expect(page.getByText("“有一束光，正在纸上慢慢醒来。”")).toBeVisible()
+})
+
+test("does not expose unsafe illustration paths from ready-card rows", async ({
+  playwright,
+}) => {
+  await seedUnsafeIllustrationPathReadyCard()
+  const visitor = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+  })
+
+  try {
+    const card = await getReadyCard(await fetchReadyCard(visitor))
+
+    expect(card).toMatchObject({
+      id: "test-unsafe-card",
+      illustrationUrl: null,
+      sceneLabel: "不安全插画路径场景",
+    })
+  } finally {
+    await visitor.dispose()
   }
 })
 

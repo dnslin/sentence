@@ -352,3 +352,38 @@ Implemented issue #7 xAI prompt rewrite and base64 image generation smoke path, 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: Slice 07 generated WebP storage
+
+**Date**: 2026-06-12
+**Task**: Slice 07 generated WebP storage
+**Branch**: `issue-8-local-webp-storage`
+
+### Summary
+
+Implemented issue 8 local generated-illustration WebP storage, public same-origin serving, ready-card illustrationUrl flow, code-review fixes, tests, and spec updates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `078670b` | (see git log) |
+| `e5b03dd` | (see git log) |
+| `22f6fea` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

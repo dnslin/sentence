@@ -20,6 +20,8 @@ export type GenerationAttemptErrorStage =
   | "image_generation"
   | "image_validation"
   | "smoke_write"
+  | "image_storage"
+  | "image_conversion"
 
 export type CreatedGenerationAttempt = {
   id: string

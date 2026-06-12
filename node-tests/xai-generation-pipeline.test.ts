@@ -1,14 +1,22 @@
 import { createHash } from "node:crypto"
 import { afterEach, beforeEach, describe, test } from "node:test"
 import assert from "node:assert/strict"
-import { mkdtempSync, rmSync } from "node:fs"
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+
+import sharp from "sharp"
 
 import { eq } from "drizzle-orm"
 
 import { createDatabaseClient } from "@/lib/db/client"
-import { generationAttempts } from "@/lib/db/schema"
+import { cards, generationAttempts } from "@/lib/db/schema"
 import {
   buildXaiImageGenerateRequest,
   createProductionXaiClient,
@@ -23,6 +31,7 @@ import { normalizeGeneratedBase64Image } from "@/lib/generation/image-result"
 import { sanitizeErrorMessage } from "@/lib/generation/generation-attempt-repository"
 import {
   buildFallbackIllustrationPrompt,
+  generateReadyCardForHitokotoSentence,
   generateXaiIllustrationForHitokotoSentence,
   type XaiGenerationClient,
 } from "@/lib/generation/xai-generation-pipeline"
@@ -46,6 +55,7 @@ const baseHitokotoResponse = {
 } as const
 
 let previousDatabasePath: string | undefined
+let previousGeneratedIllustrationsDir: string | undefined
 let previousXaiApiKey: string | undefined
 let tempDir: string
 let client: DatabaseClient
@@ -70,8 +80,7 @@ const pngBytes = Buffer.from([
 ])
 const jpegBytes = Buffer.from([0xff, 0xd8, 0x00, 0xff, 0xd9])
 const webpBytes = Buffer.from([
-  0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
-  0x50,
+  0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50,
 ])
 
 async function readAttempt(attemptId: string) {
@@ -86,9 +95,15 @@ async function readAttempt(attemptId: string) {
 
 beforeEach(async () => {
   previousDatabasePath = process.env.JUHUA_DATABASE_PATH
+  previousGeneratedIllustrationsDir =
+    process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR
   previousXaiApiKey = process.env.XAI_API_KEY
   tempDir = mkdtempSync(join(tmpdir(), "juhua-xai-"))
   process.env.JUHUA_DATABASE_PATH = join(tempDir, "juhua.sqlite")
+  process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR = join(
+    tempDir,
+    "generated-illustrations"
+  )
 
   await import(`../scripts/migrate.ts?test=${++migrationImportSequence}`)
   client = createDatabaseClient()
@@ -101,6 +116,13 @@ afterEach(() => {
     delete process.env.JUHUA_DATABASE_PATH
   } else {
     process.env.JUHUA_DATABASE_PATH = previousDatabasePath
+  }
+
+  if (previousGeneratedIllustrationsDir === undefined) {
+    delete process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR
+  } else {
+    process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR =
+      previousGeneratedIllustrationsDir
   }
 
   if (previousXaiApiKey === undefined) {
@@ -244,6 +266,38 @@ describe("xAI illustration generation pipeline", () => {
     assert.equal(row?.errorMessage, null)
   })
 
+  test("records failed state when image generation provider calls fail after retry", async () => {
+    let imageCalls = 0
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet watercolor scene." }
+      },
+      async generateBase64Image() {
+        imageCalls += 1
+        throw new Error("provider failed with Bearer xai-provider-secret")
+      },
+    }
+
+    const result = await generateXaiIllustrationForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "failed")
+    assert.equal(result.error.stage, "image_generation")
+    assert.equal(imageCalls, 2)
+    assert.doesNotMatch(result.error.message, /xai-provider-secret/)
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "failed")
+    assert.equal(row?.imageGenerationAttempts, 2)
+    assert.equal(row?.imageMimeType, null)
+    assert.equal(row?.imageByteLength, null)
+    assert.equal(row?.imageSha256, null)
+    assert.equal(row?.errorStage, "image_generation")
+    assert.doesNotMatch(row?.errorMessage ?? "", /xai-provider-secret/)
+  })
+
   test("retries invalid base64 image output once before succeeding", async () => {
     let imageCalls = 0
     const imageBase64 = createImageBase64(pngBytes)
@@ -330,32 +384,209 @@ describe("xAI illustration generation pipeline", () => {
     assert.match(row?.errorMessage ?? "", /base64/i)
   })
 
-  test("records failed state when image generation fails twice", async () => {
+  test("stores a successful generated illustration as WebP and creates a ready card", async () => {
+    const validPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#f8e2bd",
+      },
+    })
+      .png()
+      .toBuffer()
     const xaiClient: XaiGenerationClient = {
       async rewriteIllustrationPrompt() {
-        return { content: "A quiet watercolor scene." }
+        return { content: "A quiet picture-book scene in soft watercolor." }
       },
       async generateBase64Image() {
-        throw new Error("provider quota unavailable")
+        return {
+          b64Json: validPngBytes.toString("base64"),
+          mimeType: "image/png",
+        }
       },
     }
 
-    const result = await generateXaiIllustrationForHitokotoSentence({
+    const result = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "ready")
+    assert.match(
+      result.card.illustrationUrl ?? "",
+      /^\/generated-illustrations\/[0-9a-f-]+\.webp$/
+    )
+    assert.equal(result.card.sentence, baseHitokotoResponse.hitokoto)
+    assert.equal(result.card.status, "ready")
+
+    const storedFiles = readdirSync(
+      process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR ?? ""
+    )
+    assert.deepEqual(storedFiles, [
+      result.card.illustrationUrl?.split("/").at(-1),
+    ])
+    assert.equal(
+      storedFiles.some((file) => file.includes(".tmp")),
+      false
+    )
+
+    const [cardRow] = await client.db.select().from(cards)
+    assert.equal(cardRow?.illustrationPath, result.card.illustrationUrl)
+    assert.equal(cardRow?.status, "ready")
+
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "image_generated")
+    assert.equal(row?.imageMimeType, "image/png")
+  })
+
+  test("removes the replaced WebP when regenerating the canonical ready card", async () => {
+    const firstPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#f8e2bd",
+      },
+    })
+      .png()
+      .toBuffer()
+    const secondPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#b7d7ef",
+      },
+    })
+      .png()
+      .toBuffer()
+    let imageCalls = 0
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet picture-book scene in soft watercolor." }
+      },
+      async generateBase64Image() {
+        imageCalls += 1
+        return {
+          b64Json: (imageCalls === 1 ? firstPngBytes : secondPngBytes).toString(
+            "base64"
+          ),
+          mimeType: "image/png",
+        }
+      },
+    }
+
+    const firstResult = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+    const secondResult = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(firstResult.status, "ready")
+    assert.equal(secondResult.status, "ready")
+    assert.equal(secondResult.card.id, firstResult.card.id)
+    assert.notEqual(
+      secondResult.card.illustrationUrl,
+      firstResult.card.illustrationUrl
+    )
+    const storedFiles = readdirSync(
+      process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR ?? ""
+    )
+    assert.deepEqual(storedFiles, [
+      secondResult.card.illustrationUrl?.split("/").at(-1),
+    ])
+  })
+
+  test("records image_conversion failure without creating a ready card", async () => {
+    const invalidWebpBytes = Buffer.from("RIFFxxxxWEBPnot-really-webp")
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet picture-book scene." }
+      },
+      async generateBase64Image() {
+        return {
+          b64Json: invalidWebpBytes.toString("base64"),
+          mimeType: "image/webp",
+        }
+      },
+    }
+
+    const result = await generateReadyCardForHitokotoSentence({
       client,
       fetchFn: createControlledFetch(baseHitokotoResponse),
       xaiClient,
     })
 
     assert.equal(result.status, "failed")
-    assert.equal(result.error.stage, "image_generation")
-    assert.match(result.error.message, /provider quota unavailable/)
+    assert.equal(result.error.stage, "image_conversion")
+    const cardRows = await client.db.select().from(cards)
+    assert.equal(cardRows.length, 0)
+    assert.equal(
+      existsSync(process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR ?? ""),
+      true
+    )
+    assert.deepEqual(
+      readdirSync(process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR ?? ""),
+      []
+    )
+
     const row = await readAttempt(result.attemptId)
     assert.equal(row?.status, "failed")
-    assert.equal(row?.imageGenerationAttempts, 2)
-    assert.equal(row?.errorStage, "image_generation")
-    assert.equal(row?.imageMimeType, null)
-    assert.equal(row?.imageByteLength, null)
-    assert.equal(row?.imageSha256, null)
+    assert.equal(row?.errorStage, "image_conversion")
+  })
+
+  test("records image_storage failure without creating a ready card", async () => {
+    const validPngBytes = await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 3,
+        background: "#dfe8e3",
+      },
+    })
+      .png()
+      .toBuffer()
+    const storageFilePath = join(tempDir, "not-a-directory")
+    mkdirSync(storageFilePath)
+    rmSync(storageFilePath, { recursive: true, force: true })
+    process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR = storageFilePath
+    await import("node:fs/promises").then(({ writeFile }) =>
+      writeFile(storageFilePath, "blocks directory creation")
+    )
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet picture-book scene." }
+      },
+      async generateBase64Image() {
+        return {
+          b64Json: validPngBytes.toString("base64"),
+          mimeType: "image/png",
+        }
+      },
+    }
+
+    const result = await generateReadyCardForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "failed")
+    assert.equal(result.error.stage, "image_storage")
+    assert.doesNotMatch(result.error.message, /Bearer|sk-[A-Za-z0-9]/)
+    const cardRows = await client.db.select().from(cards)
+    assert.equal(cardRows.length, 0)
+
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "failed")
+    assert.equal(row?.errorStage, "image_storage")
   })
 })
 

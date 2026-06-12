@@ -9,6 +9,7 @@ export type PublicReadyCard = {
   sceneLabel: string
   accent: ReadyCardAccent
   status: ReadyCardStatus
+  illustrationUrl: string | null
 }
 
 export type ReadyCardResponse = {
@@ -28,6 +29,8 @@ export function isPublicReadyCard(value: unknown): value is PublicReadyCard {
     typeof card.id === "string" &&
     typeof card.sentence === "string" &&
     typeof card.sceneLabel === "string" &&
+    (typeof card.illustrationUrl === "string" ||
+      card.illustrationUrl === null) &&
     typeof card.accent === "string" &&
     isReadyCardAccent(card.accent) &&
     card.status === "ready"

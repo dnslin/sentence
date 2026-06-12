@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Backend persistence, Drizzle/SQLite, generation pipeline, ready-card store, and required validation commands."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser-visible homepage/API rendering behavior and truthful public UI contracts."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Next.js route boundary typing and strict normalization of framework inputs."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Shared DTO/guard changes and new helper placement require reuse checks."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Feature crosses generation pipeline, database, API route, image route, and React renderer."}

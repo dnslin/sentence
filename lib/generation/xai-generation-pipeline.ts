@@ -1,3 +1,4 @@
+import { upsertGeneratedReadyCard } from "@/lib/cards/generated-ready-card-repository"
 import { fetchAndStoreHitokotoSentence } from "./hitokoto-pipeline"
 import {
   buildFallbackIllustrationPrompt,
@@ -8,6 +9,12 @@ import {
   xaiImageResolution,
   xaiPromptRewriteModel,
 } from "./illustration-prompt"
+import {
+  GeneratedIllustrationStorageError,
+  removeStoredGeneratedIllustration,
+  storeGeneratedIllustrationAsWebp,
+  type StoredGeneratedIllustration,
+} from "./generated-illustration-storage"
 import {
   GeneratedImageNormalizationError,
   normalizeGeneratedBase64Image,
@@ -21,6 +28,7 @@ import {
   type GenerationAttemptErrorStage,
 } from "./generation-attempt-repository"
 
+import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 import type { DatabaseClient } from "@/lib/db/client"
 import type { HitokotoFetch } from "./hitokoto-client"
 import type { NormalizedGeneratedImage } from "./image-result"
@@ -182,7 +190,8 @@ export async function generateXaiIllustrationForHitokotoSentence(input: {
       attemptId: attempt.id,
       promptText: prompt.text,
       errorMessage:
-        prompt.fallbackErrorMessage ?? "Prompt rewrite returned unusable content",
+        prompt.fallbackErrorMessage ??
+        "Prompt rewrite returned unusable content",
     })
   }
 
@@ -232,6 +241,103 @@ export async function generateXaiIllustrationForHitokotoSentence(input: {
     prompt,
     image: imageResult.image,
     imageGenerationAttempts: imageResult.attempts,
+  }
+}
+
+export type XaiReadyCardGenerationResult =
+  | {
+      attemptId: string
+      status: "ready"
+      sentence: {
+        id: string
+        text: string
+      }
+      prompt: GenerationPromptResult
+      imageGenerationAttempts: number
+      illustration: {
+        publicPath: string
+        byteLength: number
+        sha256: string
+      }
+      card: PublicReadyCard
+    }
+  | {
+      attemptId: string
+      status: "failed"
+      sentence: {
+        id: string
+        text: string
+      }
+      prompt: GenerationPromptResult
+      error: GenerationFailure
+    }
+
+export async function generateReadyCardForHitokotoSentence(input: {
+  client: DatabaseClient
+  fetchFn?: HitokotoFetch
+  xaiClient: XaiGenerationClient
+}): Promise<XaiReadyCardGenerationResult> {
+  const generation = await generateXaiIllustrationForHitokotoSentence(input)
+
+  if (generation.status === "failed") {
+    return generation
+  }
+
+  let storedIllustration: StoredGeneratedIllustration | null = null
+
+  try {
+    const illustration = await storeGeneratedIllustrationAsWebp({
+      imageBytes: generation.image.bytes,
+    })
+    storedIllustration = illustration
+    const card = await upsertGeneratedReadyCard({
+      client: input.client,
+      sentenceId: generation.sentence.id,
+      sentenceText: generation.sentence.text,
+      illustrationUrl: illustration.publicPath,
+    })
+
+    return {
+      attemptId: generation.attemptId,
+      status: "ready",
+      sentence: generation.sentence,
+      prompt: generation.prompt,
+      imageGenerationAttempts: generation.imageGenerationAttempts,
+      illustration: {
+        publicPath: illustration.publicPath,
+        byteLength: illustration.byteLength,
+        sha256: illustration.sha256,
+      },
+      card,
+    }
+  } catch (error) {
+    if (storedIllustration) {
+      await removeStoredGeneratedIllustration(storedIllustration)
+    }
+
+    const failure: GenerationFailure = {
+      stage:
+        error instanceof GeneratedIllustrationStorageError
+          ? error.stage
+          : "image_storage",
+      message: sanitizeErrorMessage(toErrorMessage(error)),
+    }
+
+    await recordGenerationFailed({
+      client: input.client,
+      attemptId: generation.attemptId,
+      errorStage: failure.stage,
+      errorMessage: failure.message,
+      imageGenerationAttempts: generation.imageGenerationAttempts,
+    })
+
+    return {
+      attemptId: generation.attemptId,
+      status: "failed",
+      sentence: generation.sentence,
+      prompt: generation.prompt,
+      error: failure,
+    }
   }
 }
 
