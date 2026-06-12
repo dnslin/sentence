@@ -9,12 +9,16 @@ import { eq } from "drizzle-orm"
 
 import { createDatabaseClient } from "@/lib/db/client"
 import { generationAttempts } from "@/lib/db/schema"
-import { buildXaiImageGenerateRequest } from "@/lib/generation/xai-client"
+import {
+  buildXaiImageGenerateRequest,
+  createProductionXaiClient,
+} from "@/lib/generation/xai-client"
 import {
   loadXaiConfig,
   XaiConfigurationError,
 } from "@/lib/generation/xai-config"
 import { buildSafeSmokeSummary } from "@/lib/generation/xai-smoke-output"
+import { getSmokeArtifactExtension } from "@/lib/generation/xai-smoke-artifact"
 import { normalizeGeneratedBase64Image } from "@/lib/generation/image-result"
 import { sanitizeErrorMessage } from "@/lib/generation/generation-attempt-repository"
 import {
@@ -57,9 +61,18 @@ function createControlledFetch(responseBody: unknown) {
   })) satisfies HitokotoFetch
 }
 
-function createImageBase64(value: string) {
-  return Buffer.from(value).toString("base64")
+function createImageBase64(bytes: Buffer) {
+  return bytes.toString("base64")
 }
+
+const pngBytes = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00,
+])
+const jpegBytes = Buffer.from([0xff, 0xd8, 0x00, 0xff, 0xd9])
+const webpBytes = Buffer.from([
+  0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42,
+  0x50,
+])
 
 async function readAttempt(attemptId: string) {
   const rows = await client.db
@@ -103,7 +116,7 @@ describe("xAI illustration generation pipeline", () => {
   test("rewrites a stored Hitokoto sentence, generates one 1K square base64 image, and records non-ready metadata", async () => {
     const rewrittenPrompt =
       "A small figure pauses beside a quiet riverside market at dusk, gentle watercolor picture-book feeling, low saturation, generous whitespace."
-    const imageBytes = Buffer.from("controlled image bytes")
+    const imageBytes = pngBytes
     const imageBase64 = imageBytes.toString("base64")
     const imageSha256 = createHash("sha256").update(imageBytes).digest("hex")
     const rewriteInputs: Array<
@@ -166,7 +179,7 @@ describe("xAI illustration generation pipeline", () => {
   })
 
   test("falls back to a deterministic prompt when prompt rewriting is unusable", async () => {
-    const imageBase64 = createImageBase64("fallback image bytes")
+    const imageBase64 = createImageBase64(webpBytes)
     const prompts: string[] = []
     const xaiClient: XaiGenerationClient = {
       async rewriteIllustrationPrompt() {
@@ -196,13 +209,13 @@ describe("xAI illustration generation pipeline", () => {
     assert.equal(row?.promptSource, "fallback")
     assert.equal(row?.promptText, fallbackPrompt)
     assert.equal(row?.imageGenerationAttempts, 1)
-    assert.equal(row?.errorStage, null)
-    assert.equal(row?.errorMessage, null)
+    assert.equal(row?.errorStage, "prompt_rewrite")
+    assert.match(row?.errorMessage ?? "", /must not be empty/)
   })
 
   test("retries image generation once when the first image request fails", async () => {
     let imageCalls = 0
-    const imageBase64 = createImageBase64("retry image bytes")
+    const imageBase64 = createImageBase64(pngBytes)
     const xaiClient: XaiGenerationClient = {
       async rewriteIllustrationPrompt() {
         return { content: "A quiet watercolor scene." }
@@ -233,7 +246,7 @@ describe("xAI illustration generation pipeline", () => {
 
   test("retries invalid base64 image output once before succeeding", async () => {
     let imageCalls = 0
-    const imageBase64 = createImageBase64("valid retry bytes")
+    const imageBase64 = createImageBase64(pngBytes)
     const xaiClient: XaiGenerationClient = {
       async rewriteIllustrationPrompt() {
         return { content: "A quiet watercolor scene." }
@@ -257,6 +270,35 @@ describe("xAI illustration generation pipeline", () => {
     const row = await readAttempt(result.attemptId)
     assert.equal(row?.imageGenerationAttempts, 2)
     assert.equal(row?.errorStage, null)
+  })
+
+  test("records image_validation when valid base64 text does not match the image MIME", async () => {
+    const textBase64 = Buffer.from("valid base64 text, not a png").toString(
+      "base64"
+    )
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet watercolor scene." }
+      },
+      async generateBase64Image() {
+        return { b64Json: textBase64, mimeType: "image/png" }
+      },
+    }
+
+    const result = await generateXaiIllustrationForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "failed")
+    assert.equal(result.error.stage, "image_validation")
+    assert.match(result.error.message, /image\/png/)
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "failed")
+    assert.equal(row?.imageGenerationAttempts, 2)
+    assert.equal(row?.errorStage, "image_validation")
+    assert.match(row?.errorMessage ?? "", /image\/png/)
   })
 
   test("records failed state when generated base64 stays invalid after retry", async () => {
@@ -355,12 +397,12 @@ describe("xAI configuration and smoke safety", () => {
 
   test("accepts valid base64 image output without padding", () => {
     const image = normalizeGeneratedBase64Image({
-      b64Json: "YQ",
-      mimeType: "image/png",
+      b64Json: jpegBytes.toString("base64").replace(/=+$/, ""),
+      mimeType: "image/jpeg",
     })
 
-    assert.deepEqual(image.bytes, Buffer.from("a"))
-    assert.equal(image.byteLength, 1)
+    assert.deepEqual(image.bytes, jpegBytes)
+    assert.equal(image.byteLength, jpegBytes.length)
   })
 
   test("redacts configured and secret-shaped tokens from persisted errors", () => {
@@ -373,6 +415,12 @@ describe("xAI configuration and smoke safety", () => {
     assert.doesNotMatch(message, /xai-real-secret-token/)
     assert.doesNotMatch(message, /sk-testsecret12345/)
     assert.match(message, /\[redacted\]/)
+  })
+
+  test("maps smoke artifact extensions from image MIME types", () => {
+    assert.equal(getSmokeArtifactExtension("image/png"), "png")
+    assert.equal(getSmokeArtifactExtension("image/jpeg"), "jpg")
+    assert.equal(getSmokeArtifactExtension("image/webp"), "webp")
   })
 
   test("builds smoke output without secrets or raw base64 payloads", () => {
@@ -394,5 +442,34 @@ describe("xAI configuration and smoke safety", () => {
     assert.doesNotMatch(text, /secret/i)
     assert.doesNotMatch(text, /b64/i)
     assert.doesNotMatch(text, /base64/i)
+  })
+
+  test("redacts secret-shaped error messages at the smoke output boundary", () => {
+    process.env.XAI_API_KEY = "xai-boundary-secret"
+    const lines = buildSafeSmokeSummary({
+      attemptId: "attempt-1",
+      sentenceId: "sentence-1",
+      status: "failed",
+      promptSource: "fallback",
+      errorStage: "image_generation",
+      errorMessage:
+        "provider leaked Bearer xai-boundary-secret and sk-boundarysecret12345",
+    })
+
+    const text = lines.join("\n")
+    assert.doesNotMatch(text, /xai-boundary-secret/)
+    assert.doesNotMatch(text, /sk-boundarysecret12345/)
+    assert.match(text, /\[redacted\]/)
+  })
+
+  test("creates a production xAI client from preloaded config", () => {
+    delete process.env.XAI_API_KEY
+
+    assert.doesNotThrow(() => {
+      createProductionXaiClient({
+        apiKey: "xai-preloaded-secret",
+        baseURL: "https://api.x.ai/v1",
+      })
+    })
   })
 })

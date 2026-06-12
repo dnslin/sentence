@@ -1,3 +1,5 @@
+import { sanitizeErrorMessage } from "./error-sanitizer"
+
 export type SafeSmokeSummaryInput = {
   attemptId: string
   sentenceId: string
@@ -29,7 +31,9 @@ export function buildSafeSmokeSummary(input: SafeSmokeSummaryInput) {
   } else {
     lines.push(`error_stage=${input.errorStage ?? "unknown"}`)
     lines.push(
-      `error_message=${input.errorMessage ?? "Unknown generation error"}`
+      `error_message=${sanitizeErrorMessage(
+        input.errorMessage ?? "Unknown generation error"
+      )}`
     )
   }
 

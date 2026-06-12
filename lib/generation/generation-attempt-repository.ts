@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { eq } from "drizzle-orm"
 
 import { generationAttempts } from "@/lib/db/schema"
+import { sanitizeErrorMessage } from "./error-sanitizer"
 
 import type { DatabaseClient } from "@/lib/db/client"
 
@@ -86,6 +87,7 @@ export async function recordImageGenerated(input: {
   imageByteLength: number
   imageSha256: string
   imageGenerationAttempts: number
+  preservePromptFallbackError?: boolean
 }) {
   await input.client.db
     .update(generationAttempts)
@@ -94,8 +96,8 @@ export async function recordImageGenerated(input: {
       imageMimeType: input.imageMimeType,
       imageByteLength: input.imageByteLength,
       imageSha256: input.imageSha256,
-      errorStage: null,
-      errorMessage: null,
+      errorStage: input.preservePromptFallbackError ? "prompt_rewrite" : null,
+      errorMessage: input.preservePromptFallbackError ? undefined : null,
       imageGenerationAttempts: input.imageGenerationAttempts,
       updatedAt: new Date(),
     })
@@ -121,24 +123,4 @@ export async function recordGenerationFailed(input: {
     .where(eq(generationAttempts.id, input.attemptId))
 }
 
-function redactKnownSecretValues(message: string) {
-  const apiKey = process.env.XAI_API_KEY?.trim()
-  if (!apiKey) return message
-
-  return message.split(apiKey).join("[redacted]")
-}
-
-function redactSecretLikeTokens(message: string) {
-  return message
-    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [redacted]")
-    .replace(/\b(?:xai|sk)-[A-Za-z0-9_-]{8,}\b/gi, "[redacted]")
-}
-
-export function sanitizeErrorMessage(message: string) {
-  const singleLine = redactSecretLikeTokens(redactKnownSecretValues(message))
-    .replace(/\s+/g, " ")
-    .trim()
-  if (singleLine.length === 0) return "Unknown generation error"
-
-  return singleLine.length > 240 ? singleLine.slice(0, 240).trim() : singleLine
-}
+export { sanitizeErrorMessage }

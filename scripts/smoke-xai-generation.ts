@@ -12,6 +12,7 @@ import {
 } from "@/lib/generation/xai-config"
 import { createProductionXaiClient } from "@/lib/generation/xai-client"
 import { generateXaiIllustrationForHitokotoSentence } from "@/lib/generation/xai-generation-pipeline"
+import { getSmokeArtifactExtension } from "@/lib/generation/xai-smoke-artifact"
 import { buildSafeSmokeSummary } from "@/lib/generation/xai-smoke-output"
 
 async function writeSmokeArtifact(input: {
@@ -19,7 +20,7 @@ async function writeSmokeArtifact(input: {
   mimeType: string
   bytes: Buffer
 }) {
-  const extension = input.mimeType === "image/webp" ? "webp" : "png"
+  const extension = getSmokeArtifactExtension(input.mimeType)
   const directory = join(process.cwd(), "test-results", "xai-smoke")
   const artifactPath = join(directory, `${input.attemptId}.${extension}`)
   let lastError: unknown
@@ -40,8 +41,9 @@ async function writeSmokeArtifact(input: {
 }
 
 async function main() {
+  let xaiConfig: ReturnType<typeof loadXaiConfig>
   try {
-    loadXaiConfig()
+    xaiConfig = loadXaiConfig()
   } catch (error) {
     if (error instanceof XaiConfigurationError) {
       console.error(error.message)
@@ -64,7 +66,7 @@ async function main() {
   try {
     const result = await generateXaiIllustrationForHitokotoSentence({
       client,
-      xaiClient: createProductionXaiClient(),
+      xaiClient: createProductionXaiClient(xaiConfig),
     })
 
     if (result.status === "failed") {

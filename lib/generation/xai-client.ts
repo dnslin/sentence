@@ -2,7 +2,6 @@ import OpenAI from "openai"
 
 import { loadXaiConfig } from "./xai-config"
 import {
-  buildIllustrationPromptMessages,
   xaiImageAspectRatio,
   xaiImageGenerationModel,
   xaiImageResolution,
@@ -53,27 +52,32 @@ export function buildXaiImageGenerateRequest(input: {
   }
 }
 
-export function createProductionXaiClient(): XaiGenerationClient {
-  const sdk = loadXaiConfig<OpenAI>({
-    createClient: (config) =>
-      new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: config.baseURL,
-        timeout: 120_000,
-      }),
+type XaiClientConfig = {
+  apiKey: string
+  baseURL: string
+}
+
+function createOpenAiSdk(config: XaiClientConfig) {
+  return new OpenAI({
+    apiKey: config.apiKey,
+    baseURL: config.baseURL,
+    timeout: 120_000,
   })
+}
+
+export function createProductionXaiClient(config?: XaiClientConfig): XaiGenerationClient {
+  const sdk = createOpenAiSdk(config ?? loadXaiConfig())
 
   return {
     async rewriteIllustrationPrompt(input) {
-      const messages = buildIllustrationPromptMessages(input.sentence)
       const response = await sdk.chat.completions.create({
         model: xaiPromptRewriteModel,
         messages: [
           {
             role: "system",
-            content: input.systemPrompt || messages.systemPrompt,
+            content: input.systemPrompt,
           },
-          { role: "user", content: input.userPrompt || messages.userPrompt },
+          { role: "user", content: input.userPrompt },
         ],
       })
 

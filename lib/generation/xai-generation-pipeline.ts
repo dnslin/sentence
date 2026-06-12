@@ -16,6 +16,7 @@ import {
   createGenerationAttempt,
   recordGenerationFailed,
   recordImageGenerated,
+  recordPromptFallback,
   sanitizeErrorMessage,
   type GenerationAttemptErrorStage,
 } from "./generation-attempt-repository"
@@ -40,6 +41,7 @@ export type XaiGenerationClient = {
 type GenerationPromptResult = {
   source: "rewrite" | "fallback"
   text: string
+  fallbackErrorMessage?: string
 }
 
 type GenerationFailure = {
@@ -86,10 +88,11 @@ async function buildPrompt(input: {
       source: "rewrite",
       text: normalizeRewrittenIllustrationPrompt(rewrite.content),
     }
-  } catch {
+  } catch (error) {
     return {
       source: "fallback",
       text: buildFallbackIllustrationPrompt(input.sentence),
+      fallbackErrorMessage: sanitizeErrorMessage(toErrorMessage(error)),
     }
   }
 }
@@ -173,6 +176,16 @@ export async function generateXaiIllustrationForHitokotoSentence(input: {
     promptSource: prompt.source,
   })
 
+  if (prompt.source === "fallback") {
+    await recordPromptFallback({
+      client: input.client,
+      attemptId: attempt.id,
+      promptText: prompt.text,
+      errorMessage:
+        prompt.fallbackErrorMessage ?? "Prompt rewrite returned unusable content",
+    })
+  }
+
   const imageResult = await generateImageWithRetry({
     xaiClient: input.xaiClient,
     promptText: prompt.text,
@@ -206,6 +219,7 @@ export async function generateXaiIllustrationForHitokotoSentence(input: {
     imageByteLength: imageResult.image.byteLength,
     imageSha256: imageResult.image.sha256,
     imageGenerationAttempts: imageResult.attempts,
+    preservePromptFallbackError: prompt.source === "fallback",
   })
 
   return {
