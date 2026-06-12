@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/index.md","reason":"Backend spec index for generation and SQLite changes."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Existing SQLite/Drizzle, Hitokoto ingestion, migration, and validation contracts that this slice extends."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Feature crosses external API, service, database, smoke command, and future storage boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Avoid duplicated prompt/result normalization, retry, and status transition logic."}
+{"file":".trellis/tasks/06-12-xai-prompt-rewrite-image-generation/research/xai-context7.md","reason":"Context7-confirmed xAI OpenAI-compatible SDK, base64 image, aspect ratio, resolution, and model details."}

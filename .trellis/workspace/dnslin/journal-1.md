@@ -316,3 +316,39 @@ Implemented GitHub issue #6 / PR #23: added Hitokoto fetch and strict sentence n
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: Implement xAI generation smoke path
+
+**Date**: 2026-06-12
+**Task**: Implement xAI generation smoke path
+**Branch**: `issue-7-xai-generation-smoke`
+
+### Summary
+
+Implemented issue #7 xAI prompt rewrite and base64 image generation smoke path, added generation_attempts persistence, tests, backend contract docs, PR #24, and review fixes for image validation, fallback metadata, smoke safety, and client cleanup.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f61a3ca` | (see git log) |
+| `b18509c` | (see git log) |
+| `b65febc` | (see git log) |
+| `f46495c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

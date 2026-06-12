@@ -88,7 +88,50 @@ export const readyCardViews = sqliteTable(
   ]
 )
 
+export const generationAttempts = sqliteTable(
+  "generation_attempts",
+  {
+    id: text("id").primaryKey(),
+    sentenceId: text("sentence_id")
+      .notNull()
+      .references(() => sentences.id),
+    status: text("status").notNull(),
+    promptModel: text("prompt_model").notNull(),
+    imageModel: text("image_model").notNull(),
+    promptText: text("prompt_text").notNull(),
+    promptSource: text("prompt_source").notNull(),
+    imageMimeType: text("image_mime_type"),
+    imageByteLength: integer("image_byte_length"),
+    imageSha256: text("image_sha256"),
+    errorStage: text("error_stage"),
+    errorMessage: text("error_message"),
+    imageGenerationAttempts: integer("image_generation_attempts").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    check(
+      "generation_attempts_status_check",
+      sql`${table.status} in ('started', 'prompt_fallback', 'image_generated', 'failed')`
+    ),
+    check(
+      "generation_attempts_prompt_source_check",
+      sql`${table.promptSource} in ('rewrite', 'fallback')`
+    ),
+    check(
+      "generation_attempts_error_stage_check",
+      sql`${table.errorStage} is null or ${table.errorStage} in ('prompt_rewrite', 'image_generation', 'image_validation', 'smoke_write')`
+    ),
+    index("generation_attempts_sentence_idx").on(
+      table.sentenceId,
+      table.createdAt
+    ),
+    index("generation_attempts_status_idx").on(table.status, table.updatedAt),
+  ]
+)
+
 export type CardRow = typeof cards.$inferSelect
+export type GenerationAttemptRow = typeof generationAttempts.$inferSelect
 export type HitokotoSentenceMetadataRow =
   typeof hitokotoSentenceMetadata.$inferSelect
 export type ReadyCardViewRow = typeof readyCardViews.$inferSelect

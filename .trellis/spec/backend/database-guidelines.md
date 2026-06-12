@@ -531,3 +531,162 @@ for (const category of ["d", "e", "i", "k"] as const) {
   url.searchParams.append("c", category)
 }
 ```
+
+---
+
+## Scenario: xAI prompt rewrite and base64 image generation smoke path
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches xAI prompt rewriting, xAI image generation, generated-image attempt status, base64 image normalization, or the live xAI smoke command.
+
+This path proves model integration but stops before public ready-card storage:
+
+```text
+Hitokoto sentence row → xAI prompt rewrite/fallback → xAI base64 image → generation_attempts metadata → future WebP storage
+```
+
+### 2. Signatures
+
+**Focused test command**
+
+```json
+{
+  "test:xai": "node --import tsx --test node-tests/xai-generation-pipeline.test.ts",
+  "smoke:xai": "tsx scripts/smoke-xai-generation.ts"
+}
+```
+
+Keep Node `node:test` generation-pipeline tests under `node-tests/`, not `tests/`, so Playwright's `testDir: "./tests"` remains browser e2e only.
+
+**xAI constants**
+
+```typescript
+const xaiApiBaseUrl = "https://api.x.ai/v1"
+const xaiPromptRewriteModel = "grok-4.3"
+const xaiImageGenerationModel = "grok-imagine-image-quality"
+const xaiImageAspectRatio = "1:1"
+const xaiImageResolution = "1k"
+```
+
+Image generation requests must use `response_format: "b64_json"`, `n: 1`, top-level `aspect_ratio: "1:1"`, and top-level `resolution: "1k"`. Do not nest xAI REST fields under `extra_body` for the OpenAI JavaScript SDK v6 path; `images.generate(body)` sends the body object directly.
+
+**xAI client boundary**
+
+```typescript
+type XaiGenerationClient = {
+  rewriteIllustrationPrompt(input: {
+    sentence: string
+    systemPrompt: string
+    userPrompt: string
+  }): Promise<{ content: string | null }>
+  generateBase64Image(input: {
+    prompt: string
+    aspectRatio: "1:1"
+    resolution: "1k"
+  }): Promise<{ b64Json: string | null; mimeType: string | null }>
+}
+```
+
+Use this injectable boundary for tests; production callers use the OpenAI-compatible SDK configured with `XAI_API_KEY` and `baseURL: "https://api.x.ai/v1"`.
+
+**Database table**
+
+```text
+generation_attempts(
+  id text primary key,
+  sentence_id text not null references sentences(id),
+  status text not null check(status in ('started','prompt_fallback','image_generated','failed')),
+  prompt_model text not null,
+  image_model text not null,
+  prompt_text text not null,
+  prompt_source text not null check(prompt_source in ('rewrite','fallback')),
+  image_mime_type text nullable,
+  image_byte_length integer nullable,
+  image_sha256 text nullable,
+  error_stage text nullable check(error_stage in ('prompt_rewrite','image_generation','image_validation','smoke_write') or error_stage is null),
+  error_message text nullable,
+  image_generation_attempts integer not null,
+  created_at integer not null,
+  updated_at integer not null
+)
+```
+
+### 3. Contracts
+
+- `XAI_API_KEY` is server-only. It must be read from server environment only and must not appear in client bundles, public payloads, database rows, logs, smoke summaries, or thrown user-facing messages.
+- Missing `XAI_API_KEY` must fail before constructing a production SDK client or making xAI calls.
+- Prompt rewriting uses `grok-4.3`; unusable rewrite output or rewrite errors fall back to the deterministic non-attributed picture-book prompt.
+- Prompt constraints must describe visual traits and must not name or imply imitation of living artists.
+- Image generation uses `grok-imagine-image-quality` and the base64-only request contract above.
+- Normalize image output at one boundary: `b64_json` must decode to non-empty bytes, MIME type must be a supported image MIME or default safely, and SHA-256/byte length are computed from decoded bytes.
+- Accept valid base64 with or without padding, but reject empty or structurally invalid base64.
+- Never store raw base64 image blobs in SQLite. Store only MIME type, decoded byte length, SHA-256 digest, prompt/status, and sanitized error metadata.
+- Image generation SDK failures and invalid base64 responses retry once. After retry exhaustion, persist `status='failed'` with `error_stage` and sanitized `error_message`.
+- Smoke artifact writes, if used for inspection, must target ignored paths such as `test-results/xai-smoke/`, retry once, and record `smoke_write` failure if they still fail.
+- This slice must not mark `cards.status='ready'`, create public image URLs, or serve generated images through the public page.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `XAI_API_KEY` missing | Stop before SDK construction/xAI calls with clear setup guidance. |
+| Prompt rewrite returns blank/non-string or throws | Use deterministic fallback prompt and keep image generation running. |
+| First image generation call throws | Retry once; if retry succeeds, record `image_generated` with `image_generation_attempts=2`. |
+| Both image generation calls throw | Record `failed`, `error_stage='image_generation'`, and no image metadata. |
+| First image response has invalid/empty base64 | Retry once. |
+| Base64 remains invalid after retry | Record `failed`, `error_stage='image_validation'`, and no image metadata. |
+| Valid base64 omits padding | Accept it and compute metadata from decoded bytes. |
+| Error text contains API keys or bearer/sk-like tokens | Redact before persistence or smoke output. |
+| Smoke command has credentials | Apply migrations before opening the shared DB, then run live Hitokoto + xAI path. |
+| Smoke command lacks credentials | Do not run migrations, open DB, or call xAI; print setup guidance and exit non-zero. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: controlled xAI client returns a rewritten prompt and base64 image; the attempt row records model names, prompt source, MIME type, byte length, digest, and one image attempt.
+- Good: a blank rewrite response uses fallback prompt and still records successful image metadata.
+- Good: a transient image-generation error retries once and records two image attempts when the second call succeeds.
+- Good: live smoke writes decoded bytes only under `test-results/xai-smoke/` and prints digest/metadata, never raw base64.
+- Base: live smoke is skipped in automated checks when no real `XAI_API_KEY` is provided; the missing-key guard is still verified.
+- Bad: storing `b64_json` in SQLite.
+- Bad: adding generated cards to the public ready pool before WebP storage exists.
+- Bad: passing xAI `aspect_ratio` / `resolution` under an SDK-only nested field that xAI does not document.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- Successful controlled prompt rewrite + base64 image generation records non-ready metadata.
+- Prompt rewrite failure or unusable content falls back to the deterministic fixed template.
+- Image generation failures retry once and then either succeed or record failed state.
+- Invalid base64 image output retries once and then either succeeds or records `image_validation` failure.
+- Missing `XAI_API_KEY` fails before production SDK construction.
+- The production image request builder emits top-level `response_format`, `n`, `aspect_ratio`, and `resolution` fields.
+- Smoke summaries and persisted errors do not include secrets or raw base64.
+- `pnpm test:xai`, `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+await client.images.generate({
+  model: "grok-imagine-image-quality",
+  prompt,
+  response_format: "b64_json",
+  extra_body: { aspect_ratio: "1:1", resolution: "1k" },
+})
+```
+
+#### Correct
+
+```typescript
+await client.images.generate({
+  model: "grok-imagine-image-quality",
+  prompt,
+  response_format: "b64_json",
+  n: 1,
+  aspect_ratio: "1:1",
+  resolution: "1k",
+})
+```
