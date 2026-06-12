@@ -1,0 +1,3 @@
+{"file":"CONTEXT.md","reason":"Domain vocabulary for 一言, 随机短句, 图文卡片"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"SQLite/Drizzle database contracts"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Data flow boundary guidance"}
