@@ -11,7 +11,7 @@ import type { ReadyCardRequestContext } from "./ready-card-request-context"
 
 import { cards, readyCardViews, sentences } from "@/lib/db/schema"
 
-import type { DatabaseClient } from "@/lib/db/client"
+import { runImmediateTransaction, type DatabaseClient } from "@/lib/db/client"
 
 const recentWindowSize = 50
 const readyPoolLimit = 200
@@ -175,14 +175,7 @@ export async function getNextReadyCardForVisitor(
   client: DatabaseClient,
   context: ReadyCardRequestContext
 ): Promise<PublicReadyCard | null> {
-  client.sqlite.exec("BEGIN IMMEDIATE")
-
-  try {
-    const card = await getNextReadyCardForVisitorInTransaction(client, context)
-    client.sqlite.exec("COMMIT")
-    return card
-  } catch (error) {
-    client.sqlite.exec("ROLLBACK")
-    throw error
-  }
+  return runImmediateTransaction(client, () =>
+    getNextReadyCardForVisitorInTransaction(client, context)
+  )
 }

@@ -73,3 +73,19 @@ export function createDatabaseClient() {
 }
 
 export type DatabaseClient = ReturnType<typeof createDatabaseClient>
+
+export async function runImmediateTransaction<T>(
+  client: DatabaseClient,
+  callback: () => Promise<T>
+): Promise<T> {
+  client.sqlite.exec("BEGIN IMMEDIATE")
+
+  try {
+    const result = await callback()
+    client.sqlite.exec("COMMIT")
+    return result
+  } catch (error) {
+    client.sqlite.exec("ROLLBACK")
+    throw error
+  }
+}

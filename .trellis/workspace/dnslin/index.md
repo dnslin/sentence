@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-06-11
+- **Total Sessions**: 9
+- **Last Active**: 2026-06-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~283 | Active |
+| `journal-1.md` | ~318 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-06-12 | Implement Hitokoto sentence ingestion | `92cf429`, `142a133`, `2c4a54c` | `issue-6-hitokoto-fetch-sentence-normalization` |
 | 8 | 2026-06-11 | Issue 5 refresh flow recent-card avoidance | `bbcbd55`, `2f4f7ff`, `3975849`, `5929e47` | `issue-5-refresh-flow-recent-card-avoidance` |
 | 7 | 2026-06-11 | Fix PR 20 code review findings | `a0a5893`, `eb64307` | `issue-4-sqlite-drizzle-ready-card-api` |
 | 6 | 2026-06-11 | Issue 4 SQLite Drizzle ready card API | `02ac05c`, `c1764b0`, `9bd40ee` | `issue-4-sqlite-drizzle-ready-card-api` |

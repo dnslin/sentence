@@ -18,7 +18,8 @@
     "db:seed": "tsx scripts/seed-ready-card.ts",
     "db:setup": "pnpm db:migrate && pnpm db:seed",
     "test:e2e": "playwright test",
-    "test:e2e:reset-db": "tsx scripts/reset-e2e-database.ts"
+    "test:e2e:reset-db": "tsx scripts/reset-e2e-database.ts",
+    "test:hitokoto": "node --import tsx --test node-tests/hitokoto-pipeline.test.ts"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
