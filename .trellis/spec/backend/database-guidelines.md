@@ -693,6 +693,164 @@ await client.images.generate({
 
 ---
 
+## Scenario: Pregenerated ready-pool worker with durable daily cap
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches the independent ready-pool worker, worker package scripts, ready-pool inventory counting, daily generation cap state, or background generation orchestration.
+
+This path runs outside the Next.js web process:
+
+```text
+worker CLI → SQLite ready inventory count → durable daily reservation → generateReadyCardForHitokotoSentence(...) → cards/generation_attempts
+```
+
+### 2. Signatures
+
+**Package scripts**
+
+```json
+{
+  "worker:ready-pool": "tsx scripts/run-ready-pool-worker.ts",
+  "test:worker": "node --import tsx --test node-tests/ready-pool-worker.test.ts"
+}
+```
+
+**Worker constants**
+
+```typescript
+const readyPoolReplenishThreshold = 50
+const readyPoolTargetInventory = 200
+const readyPoolDailyGenerationCap = 250
+const readyPoolGenerationConcurrency = 1
+const readyPoolWorkerIntervalMs = 60_000
+```
+
+**Worker service boundary**
+
+```typescript
+type ReadyPoolGenerator = () => Promise<XaiReadyCardGenerationResult>
+type ReadyPoolClock = () => Date
+type ReadyPoolStopSignal = { readonly stopped: boolean }
+
+type ReadyPoolReplenishmentSummary = {
+  startedInventory: number
+  endingInventory: number
+  threshold: 50
+  target: 200
+  dailyCap: 250
+  generatedReadyCount: number
+  failedCount: number
+  reservedCount: number
+  skippedReason: "inventory_above_threshold" | "daily_cap_exhausted" | "stopped" | null
+}
+
+async function replenishReadyPoolOnce(input: {
+  client: DatabaseClient
+  generateReadyCard: ReadyPoolGenerator
+  now?: ReadyPoolClock
+  stopSignal?: ReadyPoolStopSignal
+}): Promise<ReadyPoolReplenishmentSummary>
+```
+
+**Database table**
+
+```text
+ready_pool_generation_days(
+  day_key text primary key,
+  generation_count integer not null check(generation_count >= 0),
+  created_at integer not null,
+  updated_at integer not null
+)
+```
+
+### 3. Contracts
+
+- The worker must be independently runnable from the web process through `pnpm worker:ready-pool`.
+- The production worker must validate `XAI_API_KEY` before starting the long-running loop and must not print the secret.
+- The production worker applies migrations before opening its runtime `DatabaseClient`.
+- Ready inventory is a database fact: count rows that public ready-card selection can serve (`cards.status='ready'`, valid accent, joined sentence row). Do not count failed attempts or planned work.
+- Replenishment starts only when ready inventory is below `50`; inventory `50` or higher skips generation.
+- When inventory is below `50`, one pass generates toward `200`, stopping if the target is reached, the daily cap is exhausted, or the stop signal is set.
+- The accepted daily-cap boundary is a worker ready-card generation-job reservation before each `generateReadyCardForHitokotoSentence(...)` call. It does not count each internal xAI image retry as a separate cap unit.
+- Daily cap state must be durable in SQLite and guarded by `BEGIN IMMEDIATE` so process restarts do not reset same-day capacity.
+- Worker generation concurrency is `1`: await each generation job and re-count inventory before deciding whether to reserve/start another job. Do not launch a `Promise.all` batch for replenishment.
+- Failed generation results or thrown generator errors count as failed worker outcomes, consume the already-reserved worker-job capacity, and must not create/update public ready `cards` rows.
+- Pipeline failures that reach an attempt row remain inspectable in `generation_attempts`; worker summaries may report aggregate counts but must not include raw base64 or secrets.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `XAI_API_KEY` missing for production CLI | Print setup guidance for `pnpm worker:ready-pool`, set non-zero exit code, and do not start the worker loop. |
+| Ready inventory is `50` or higher | Return a summary with `skippedReason='inventory_above_threshold'` and do not call the generator. |
+| Ready inventory is below `50` | Reserve capacity and run one generation job at a time until inventory reaches `200`, cap is exhausted, or stopped. |
+| Daily row is missing | First reservation for that UTC day inserts `generation_count=1`. |
+| Daily row has `generation_count >= 250` | Return `cap_exhausted` without calling the generator. |
+| Process restarts on the same day | Existing `ready_pool_generation_days` count still limits further reservations. |
+| Generation returns `status='failed'` | Increment failed summary count, keep failure inspectable through persisted status, re-count inventory, and continue if cap remains. |
+| Generator throws | Treat as a failed worker outcome, re-count inventory, and continue unless stopped/capped. |
+| Stop signal is set between jobs | Do not reserve/start another job; return `skippedReason='stopped'`. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: with 49 ready cards and enough cap, one controlled worker pass serially creates ready cards until inventory reaches 200.
+- Good: with 49 ready cards but only limited same-day capacity left, the worker consumes the remaining reservations and then stops with `daily_cap_exhausted`.
+- Good: a failed controlled generation records a failed `generation_attempts` row and the worker keeps it out of ready inventory.
+- Base: with exactly 50 ready cards, the worker reports an inventory skip and performs no external-service work.
+- Base: seeded mock ready cards count as ready inventory because they are public-ready rows.
+- Bad: computing `200 - current` once and launching that many generation promises; failures/canonical upserts make the count stale and violate concurrency 1.
+- Bad: keeping the daily cap in process memory; restarting the worker would bypass the cap.
+- Bad: adding failed rows to `cards` by broadening `cards.status`; public ready-card queries must remain ready-only.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- Below-threshold inventory (`49`) replenishes to the target (`200`) using controlled generation doubles.
+- At-threshold inventory (`50`) skips generation and the controlled generator is not called.
+- Worker generation jobs do not overlap; maximum active controlled generator calls stays `1`.
+- Daily cap reservations persist across closed/reopened database clients for the same injected UTC day.
+- Exhausting the daily cap prevents further generation calls and returns `daily_cap_exhausted`.
+- Failed controlled generations remain inspectable and are excluded from ready-card inventory.
+- `pnpm test:worker`, `pnpm test:xai`, `pnpm test:hitokoto`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass for worker-related changes.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Process-local cap and parallel generation both violate durable cap and concurrency 1.
+let generatedToday = 0
+const needed = 200 - currentInventory
+await Promise.all(
+  Array.from({ length: needed }, async () => {
+    if (generatedToday >= 250) return
+    generatedToday += 1
+    return generateReadyCardForHitokotoSentence({ client, xaiClient })
+  })
+)
+```
+
+#### Correct
+
+```typescript
+while (inventory < readyPoolTargetInventory) {
+  const reservation = await reserveDailyGenerationCapacity({
+    client,
+    dayKey: getUtcDayKey(now()),
+    dailyCap: readyPoolDailyGenerationCap,
+    now: now(),
+  })
+  if (reservation.status === "cap_exhausted") break
+
+  await generateReadyCard()
+  inventory = await countReadyPoolInventory(client)
+}
+```
+
+---
+
 ## Scenario: Generated illustration local WebP storage and public serving
 
 ### 1. Scope / Trigger
