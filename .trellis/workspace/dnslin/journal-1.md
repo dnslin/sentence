@@ -387,3 +387,37 @@ Implemented issue 8 local generated-illustration WebP storage, public same-origi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Issue 9 ready-pool worker
+
+**Date**: 2026-06-12
+**Task**: Issue 9 ready-pool worker
+**Branch**: `issue-9-pregenerated-pool-worker`
+
+### Summary
+
+Implemented the independent pregenerated ready-pool worker with SQLite-backed daily job reservations, threshold/target replenishment, sequential generation, failure-visible behavior tests, package scripts, migration, and backend code-spec documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c1f8544` | (see git log) |
+| `683d6a8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
