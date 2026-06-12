@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Check implementation against database, generation, ready-card, and test contracts."}
+{"file":"docs/adr/0001-self-host-nextjs-with-docker-compose.md","reason":"Verify worker remains independently runnable from web."}
+{"file":"docs/adr/0002-hybrid-pregenerated-card-pool.md","reason":"Verify threshold and target behavior match accepted ADR."}
+{"file":"docs/adr/0003-sqlite-and-local-webp-storage.md","reason":"Verify durable metadata/cap/failure records remain SQLite-backed and generated assets stay local WebP."}

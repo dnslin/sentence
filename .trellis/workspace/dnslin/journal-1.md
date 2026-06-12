@@ -387,3 +387,71 @@ Implemented issue 8 local generated-illustration WebP storage, public same-origi
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: Issue 9 ready-pool worker
+
+**Date**: 2026-06-12
+**Task**: Issue 9 ready-pool worker
+**Branch**: `issue-9-pregenerated-pool-worker`
+
+### Summary
+
+Implemented the independent pregenerated ready-pool worker with SQLite-backed daily job reservations, threshold/target replenishment, sequential generation, failure-visible behavior tests, package scripts, migration, and backend code-spec documentation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `22cbb1a` | (see git log) |
+| `ae52081` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 13: PR 26 ready-pool review fixes
+
+**Date**: 2026-06-12
+**Task**: PR 26 ready-pool review fixes
+**Branch**: `issue-9-pregenerated-pool-worker`
+
+### Summary
+
+Fixed PR #26 ready-pool worker review findings: sanitized thrown-error reporting, resilient worker loop, interruptible shutdown sleep, accurate inventory-growth summary, shared public-ready count, no direct process.exit, updated worker tests, and refreshed backend code-spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7452af9` | (see git log) |
+| `d0f08b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
