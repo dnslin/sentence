@@ -72,9 +72,21 @@ type ReadyCardResponse = {
     sceneLabel: string
     accent: "dawn" | "rain" | "moon"
     status: "ready"
+    illustrationUrl: string | null
   }
 }
 ```
+
+- Empty-stock public error payload:
+
+```typescript
+type ReadyCardErrorResponse = {
+  error: "ready_card_not_found"
+  message: string
+}
+```
+
+`message` must be calm public Chinese copy. It must not mention local store, `pnpm db:setup`, SQLite/database internals, generation stack traces, model/provider errors, or setup commands.
 
 ### 3. Contracts
 
@@ -97,8 +109,8 @@ type ReadyCardResponse = {
 | Local DB missing tables | `pnpm dev` and `pnpm start` run `pnpm db:setup` before serving; `pnpm db:migrate` creates schema from committed migrations. |
 | Seed run repeatedly | Existing sentence/card rows are updated by primary key, not duplicated. |
 | Runtime connection opens | Execute WAL and foreign-key pragmas on that connection. |
-| Ready card missing from API | Return `404` with `error: "ready_card_not_found"`. |
-| Ready card missing from homepage | Fail clearly and instruct local setup (`pnpm db:setup`); do not silently fall back to frontend mock data. |
+| Ready card missing from API | Return `404` with a typed safe public payload: `{ error: "ready_card_not_found", message: string }`. The message uses calm Chinese copy and must not expose local store, setup commands, database, stack, model, provider, or generation details. |
+| Ready card missing from homepage | Render the calm public empty-stock state. Do not throw a local setup error, do not render a frontend mock fallback, and do not start browser-triggered generation. |
 | Row has unknown `status` or `accent` | DB constraints reject new invalid rows; repository filters existing corrupt rows as unavailable before returning public data. |
 
 > **Warning**: `node:sqlite` emits an ExperimentalWarning on Node 22. This is expected for the current local runtime and is not by itself a failing check when commands pass.
@@ -106,9 +118,11 @@ type ReadyCardResponse = {
 ### 5. Good/Base/Bad Cases
 
 - Good: `pnpm db:setup && pnpm db:seed` succeeds, `GET /api/ready-card` returns `{ card: { status: "ready" } }`, and `/` renders the same seeded sentence and scene label.
+- Good: with zero ready rows, `GET /api/ready-card` returns a safe `ready_card_not_found` payload and `/` renders the calm empty-stock state instead of a technical setup error.
 - Base: a developer sets `JUHUA_DATABASE_PATH=test-data/e2e/juhua.sqlite`; migrations and seed use that isolated file.
 - Bad: homepage imports a local mock array, or API and homepage each define their own `{ card }` type.
 - Bad: repository uses `sqlite.prepare(...).get()` for feature reads while Drizzle schema exists only for migration generation.
+- Bad: public empty-stock copy mentions local store, `pnpm db:setup`, SQLite, stack traces, model/provider errors, or immediate on-demand generation.
 
 ### 6. Tests Required
 
@@ -116,6 +130,8 @@ For changes to this path, add or update behavior tests that assert:
 
 - `GET /api/ready-card` returns HTTP `200` and exactly the public `{ card: ... }` shape for the seeded ready card.
 - `/` visibly renders the seeded sentence and scene label through public DOM queries.
+- With zero ready rows, `GET /api/ready-card` returns HTTP `404`, `error: "ready_card_not_found"`, and a safe public Chinese `message` with no local store/setup/database/generation/model/provider details.
+- With zero ready rows, `/` visibly renders the calm empty-stock title/description and does not expose the old local setup error.
 - Repeated seed/setup access keeps the public ready-card response stable.
 - Runtime SQLite connections enforce `ready_card_views.card_id` foreign keys.
 - `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.

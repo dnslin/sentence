@@ -4,11 +4,19 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
+  isReadyCardErrorResponse,
   isReadyCardResponse,
   type PublicReadyCard,
 } from "@/lib/cards/public-ready-card"
 
 import { QuietGalleryCard } from "./quiet-gallery-card"
+
+const refreshEmptyStockAnnouncement =
+  "新的图文卡片还在准备中，当前这一张已保留。请稍后再试。"
+const refreshFailureAnnouncement =
+  "刷新生成暂时没有成功，当前图文卡片已保留。请稍后再试。"
+const refreshLimitAnnouncement =
+  "今天的刷新有点频繁了，先让这张图文卡片停留一会儿。"
 
 type Announcement = {
   text: string
@@ -35,16 +43,29 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
 
     try {
       const response = await fetch("/api/ready-card", { cache: "no-store" })
-      if (!response.ok) throw new Error("ready-card request failed")
+      const body: unknown = await response.json().catch(() => null)
 
-      const body: unknown = await response.json()
+      if (!response.ok) {
+        if (isReadyCardErrorResponse(body)) {
+          announce(
+            body.error === "ready_card_limited"
+              ? refreshLimitAnnouncement
+              : refreshEmptyStockAnnouncement
+          )
+          return
+        }
+
+        announce(refreshFailureAnnouncement)
+        return
+      }
+
       if (!isReadyCardResponse(body))
-        throw new Error("ready-card response was invalid")
+        throw new Error("invalid ready-card response")
 
       setCurrentCard(body.card)
       announce("已刷新生成新的图文卡片。")
     } catch {
-      announce("刷新生成失败，当前图文卡片已保留。请稍后再试。")
+      announce(refreshFailureAnnouncement)
     } finally {
       setIsRefreshing(false)
     }

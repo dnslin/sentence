@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend route and browser-visible behavior checklist for homepage and refresh UI changes."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Contracts for public empty/error states, truthful copy, and browser-visible validation."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"TypeScript boundary guidance for route/client input normalization and avoiding unsafe casts."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend spec entry point for ready-card API and SQLite path changes."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Existing ready-card API/homepage database contracts and tests to preserve or intentionally supersede."}

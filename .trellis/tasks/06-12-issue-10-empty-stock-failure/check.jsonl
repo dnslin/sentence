@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Quality checklist for frontend route-visible behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify public empty/error states, truthful copy, and no debug/prototype leakage."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify strict TypeScript handling at public boundaries."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend quality entry point for ready-card API changes."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify ready-card API/homepage DB path behavior and required validation commands."}

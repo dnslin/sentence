@@ -309,6 +309,30 @@ test("renders the API-backed ready card on the homepage", async ({ page }) => {
   ).toBeVisible()
 })
 
+test("renders a calm empty-stock homepage when no ready cards exist", async ({
+  page,
+}) => {
+  await clearReadyCards()
+  await page.goto("/")
+
+  await expect(
+    page.getByRole("heading", {
+      name: "这会儿还没有准备好的图文卡片。",
+    })
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      "新的图文绑定还在慢慢准备中。请稍后再来看看，我们不会让你等待现场生成。"
+    )
+  ).toBeVisible()
+  await expect(
+    page.getByText(/Run `pnpm db:setup`|local store|数据库|stack/i)
+  ).toHaveCount(0)
+  await expect(page.getByRole("article", { name: "图文卡片预览" })).toHaveCount(
+    0
+  )
+})
+
 test("refresh replaces the displayed sentence and illustration binding", async ({
   page,
 }) => {
@@ -404,7 +428,7 @@ test("refresh failure keeps current card and allows retry", async ({
 
   await page.getByRole("button", { name: "再来一张" }).click()
   await expect(
-    page.getByText("刷新生成失败，当前图文卡片已保留。请稍后再试。")
+    page.getByText("刷新生成暂时没有成功，当前图文卡片已保留。请稍后再试。")
   ).toBeVisible()
   await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
   await expect(page.getByText(initialSentence ?? "")).toBeVisible()
@@ -416,6 +440,62 @@ test("refresh failure keeps current card and allows retry", async ({
     .getByText(/^“.*”$/)
     .textContent()
   expect(updatedSentence).not.toBe(initialSentence)
+})
+
+test("refresh empty-stock response keeps current card and allows retry", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const initialSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+
+  await page.route("**/api/ready-card", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "ready_card_not_found",
+        message: "这会儿还没有准备好的图文卡片。",
+      }),
+    })
+  })
+
+  await page.getByRole("button", { name: "再来一张" }).click()
+  await expect(
+    page.getByText("新的图文卡片还在准备中，当前这一张已保留。请稍后再试。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
+  await expect(page.getByText(initialSentence ?? "")).toBeVisible()
+})
+
+test("refresh limit response keeps current card and shows gentle copy", async ({
+  page,
+}) => {
+  await page.goto("/")
+  const initialSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+
+  await page.route("**/api/ready-card", async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "ready_card_limited",
+        message: "今天的刷新有点频繁了，先让这张图文卡片停留一会儿。",
+      }),
+    })
+  })
+
+  await page.getByRole("button", { name: "再来一张" }).click()
+  await expect(
+    page.getByText("今天的刷新有点频繁了，先让这张图文卡片停留一会儿。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
+  await expect(page.getByText(initialSentence ?? "")).toBeVisible()
 })
 
 test("keeps seeding idempotent for a fresh public ready-card visitor", async ({
@@ -512,14 +592,20 @@ test("does not expose unsafe illustration paths from ready-card rows", async ({
   }
 })
 
-test("returns ready_card_not_found when no ready cards exist", async ({
+test("returns a safe ready_card_not_found payload when no ready cards exist", async ({
   request,
 }) => {
   await clearReadyCards()
 
   const response = await fetchReadyCard(request)
   expect(response.status()).toBe(404)
-  await expect(response.json()).resolves.toMatchObject({
+  const body: unknown = await response.json()
+  expect(body).toMatchObject({
     error: "ready_card_not_found",
+    message:
+      "这会儿还没有准备好的图文卡片。新的图文绑定还在慢慢准备中，请稍后再试。",
   })
+  expect(JSON.stringify(body)).not.toMatch(
+    /local store|pnpm db:setup|database|sqlite|stack|model|provider|generation/i
+  )
 })
