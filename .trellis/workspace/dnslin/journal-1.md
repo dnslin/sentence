@@ -281,3 +281,38 @@ Implemented issue #5 refresh flow with anonymous ready-card identity, recent-50 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: Implement Hitokoto sentence ingestion
+
+**Date**: 2026-06-12
+**Task**: Implement Hitokoto sentence ingestion
+**Branch**: `issue-6-hitokoto-fetch-sentence-normalization`
+
+### Summary
+
+Implemented GitHub issue #6 / PR #23: added Hitokoto fetch and strict sentence normalization, duplicate-safe SQLite metadata persistence, focused Node tests, backend code-spec updates, and review-finding fixes for transaction scope and test helpers.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `92cf429` | (see git log) |
+| `142a133` | (see git log) |
+| `2c4a54c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
