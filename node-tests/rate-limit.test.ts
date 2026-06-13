@@ -4,13 +4,19 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
-import { eq } from "drizzle-orm"
+import { count, eq } from "drizzle-orm"
 
+import {
+  createReadyCardRequestContext,
+  anonymousCookieName,
+} from "@/lib/cards/ready-card-request-context"
+import { getRateLimitedNextReadyCardForVisitor } from "@/lib/cards/rate-limited-ready-card"
 import { createDatabaseClient } from "@/lib/db/client"
 import { rateLimitWindows } from "@/lib/db/schema"
 import {
   checkAndConsumeRateLimit,
   rateLimitConfigs,
+  rateLimitedActions,
   type RateLimitedAction,
 } from "@/lib/rate-limit/action-rate-limit"
 
@@ -100,7 +106,7 @@ describe("action rate limits", () => {
 
   test("resets refresh, download, and share quotas in the next hourly window", async () => {
     await withClient(async (client) => {
-      for (const action of ["refresh", "download", "share"] as const) {
+      for (const action of rateLimitedActions) {
         const contextKey = `context-${action}`
         await consumeToLimit({
           client,
@@ -172,6 +178,89 @@ describe("action rate limits", () => {
         .from(rateLimitWindows)
         .where(eq(rateLimitWindows.contextKey, contextKey))
       assert.equal(rows[0]?.count, limit)
+    })
+  })
+
+  test("ignores spoofable x-forwarded-for when deriving rate-limit context", () => {
+    const cookieValue = "00000000-0000-4000-8000-000000000001"
+    const cookiesList = { get: () => ({ value: cookieValue }) }
+    const firstContext = createReadyCardRequestContext({
+      cookiesList,
+      headersList: {
+        get: (name) => (name === "x-forwarded-for" ? "198.51.100.1" : null),
+      },
+    })
+    const secondContext = createReadyCardRequestContext({
+      cookiesList,
+      headersList: {
+        get: (name) => (name === "x-forwarded-for" ? "203.0.113.7" : null),
+      },
+    })
+    const trustedIpContext = createReadyCardRequestContext({
+      cookiesList,
+      headersList: {
+        get: (name) => (name === "x-real-ip" ? "203.0.113.7" : null),
+      },
+    })
+
+    assert.equal(firstContext.visitorKey, secondContext.visitorKey)
+    assert.equal(
+      firstContext.requestContextKey,
+      secondContext.requestContextKey
+    )
+    assert.notEqual(
+      firstContext.requestContextKey,
+      trustedIpContext.requestContextKey
+    )
+  })
+
+  test("prunes expired rate-limit windows during bounded hot-path cleanup", async () => {
+    await withClient(async (client) => {
+      await checkAndConsumeRateLimit({
+        client,
+        action: "refresh",
+        contextKey: "old-context",
+        now: () => new Date("2026-06-08T00:00:00.000Z"),
+      })
+      await checkAndConsumeRateLimit({
+        client,
+        action: "refresh",
+        contextKey: "current-context",
+        now: () => new Date("2026-06-12T00:00:00.000Z"),
+      })
+
+      const rows = await client.db.select().from(rateLimitWindows)
+      assert.equal(rows.length, 1)
+      assert.equal(rows[0]?.contextKey, "current-context")
+    })
+  })
+
+  test("rolls back consumed refresh quota when ready-card selection fails", async () => {
+    await withClient(async (client) => {
+      const context = createReadyCardRequestContext({
+        cookiesList: {
+          get: (name) =>
+            name === anonymousCookieName
+              ? { value: "00000000-0000-4000-8000-000000000002" }
+              : undefined,
+        },
+        headersList: { get: () => null },
+      })
+
+      client.sqlite.exec("DROP TABLE ready_card_views")
+
+      await assert.rejects(
+        getRateLimitedNextReadyCardForVisitor({
+          client,
+          context,
+          now: () => new Date("2026-06-12T06:00:00.000Z"),
+        })
+      )
+
+      const [windowCount] = await client.db
+        .select({ value: count() })
+        .from(rateLimitWindows)
+      assert.equal(windowCount?.value, 0)
     })
   })
 })

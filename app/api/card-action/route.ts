@@ -6,6 +6,7 @@ import { createDatabaseClient } from "@/lib/db/client"
 import { checkAndConsumeRateLimit } from "@/lib/rate-limit/action-rate-limit"
 import {
   isCardActionRequest,
+  type CardActionName,
   type CardActionInvalidResponse,
   type CardActionResponse,
   type ReadyCardLimitErrorResponse,
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic"
 const actionMessages = {
   download: "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。",
   share: "分享能力会在后续切片接入；现在没有调用系统分享。",
-} as const
+} as const satisfies Record<CardActionName, string>
 
 export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null)

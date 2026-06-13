@@ -152,7 +152,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            disabled={pendingCardAction === "download"}
+            disabled={pendingCardAction !== null}
             onClick={() => void runCardAction("download")}
           >
             {pendingCardAction === "download" ? "下载确认中" : "下载 PNG"}
@@ -162,7 +162,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            disabled={pendingCardAction === "share"}
+            disabled={pendingCardAction !== null}
             onClick={() => void runCardAction("share")}
           >
             {pendingCardAction === "share" ? "分享确认中" : "分享"}

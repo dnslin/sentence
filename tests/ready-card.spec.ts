@@ -9,6 +9,7 @@ import {
 } from "@/lib/cards/public-ready-card"
 import { seedReadyCard, seedReadyCardStore } from "@/lib/cards/seed-ready-card"
 import { createDatabaseClient } from "@/lib/db/client"
+import { rateLimitConfigs, cardActionNames } from "@/lib/rate-limit/actions"
 import {
   cards,
   rateLimitWindows,
@@ -188,7 +189,7 @@ async function countReadyCardViews() {
 async function consumeReadyCardLimit(requestContext: {
   get(url: string): Promise<{ status(): number; json(): Promise<unknown> }>
 }) {
-  for (let index = 0; index < 120; index += 1) {
+  for (let index = 0; index < rateLimitConfigs.refresh.limit; index += 1) {
     expect((await requestContext.get("/api/ready-card")).status()).toBe(200)
   }
 }
@@ -201,7 +202,7 @@ async function consumeCardActionLimit(
     ): Promise<{ status(): number; json(): Promise<unknown> }>
   },
   action: "download" | "share",
-  count = 60
+  count: number = rateLimitConfigs[action].limit
 ) {
   for (let index = 0; index < count; index += 1) {
     const response = await requestContext.post("/api/card-action", {
@@ -248,7 +249,7 @@ test("blocks refresh at the hourly limit without recording a ready-card view", a
 test("limits download and share placeholder action requests", async ({
   request,
 }) => {
-  for (const action of ["download", "share"] as const) {
+  for (const action of cardActionNames) {
     await seedE2eReadyCardStore()
 
     const allowed = await request.post("/api/card-action", { data: { action } })
@@ -258,7 +259,11 @@ test("limits download and share placeholder action requests", async ({
       status: "allowed",
     })
 
-    await consumeCardActionLimit(request, action, 59)
+    await consumeCardActionLimit(
+      request,
+      action,
+      rateLimitConfigs[action].limit - 1
+    )
     const blocked = await request.post("/api/card-action", { data: { action } })
     expect(blocked.status()).toBe(429)
     expect(await blocked.json()).toMatchObject({
@@ -266,6 +271,54 @@ test("limits download and share placeholder action requests", async ({
       message: "这个操作有点频繁了，先让当前图文卡片停留一会儿。",
     })
   }
+})
+
+test("keeps one refresh quota window when clients spoof x-forwarded-for", async ({
+  playwright,
+}) => {
+  const visitor = await playwright.request.newContext({
+    baseURL: "http://127.0.0.1:3100",
+  })
+
+  try {
+    for (let index = 0; index < rateLimitConfigs.refresh.limit; index += 1) {
+      const response = await visitor.get("/api/ready-card", {
+        headers: { "x-forwarded-for": `198.51.100.${index % 200}` },
+      })
+      expect(response.status()).toBe(200)
+    }
+
+    const blocked = await visitor.get("/api/ready-card", {
+      headers: { "x-forwarded-for": "203.0.113.250" },
+    })
+    expect(blocked.status()).toBe(429)
+    expect(await blocked.json()).toMatchObject({
+      error: "ready_card_limited",
+      message: "刷新生成有点频繁了，先让当前图文卡片停留一会儿。",
+    })
+  } finally {
+    await visitor.dispose()
+  }
+})
+
+test("renders calm homepage limit feedback instead of selecting another card", async ({
+  page,
+}) => {
+  await consumeReadyCardLimit(page.request)
+  const viewsBeforeLimitedHomepage = await countReadyCardViews()
+
+  await page.goto("/")
+
+  await expect(
+    page.getByRole("heading", { name: "刷新生成有点频繁了。" })
+  ).toBeVisible()
+  await expect(
+    page.getByText("先让当前节奏安静一会儿，稍后再回来继续看新的图文卡片。")
+  ).toBeVisible()
+  await expect(page.getByRole("article", { name: "图文卡片预览" })).toHaveCount(
+    0
+  )
+  expect(await countReadyCardViews()).toBe(viewsBeforeLimitedHomepage)
 })
 
 test("rejects invalid card action requests safely", async ({ request }) => {
@@ -629,7 +682,38 @@ test("download and share placeholder buttons call the limited action endpoint", 
     page.getByText("分享能力会在后续切片接入；现在没有调用系统分享。")
   ).toBeVisible()
 
-  expect(actions).toEqual(["download", "share"])
+  expect(actions).toEqual([...cardActionNames])
+})
+
+test("disables both placeholder action buttons while one action is pending", async ({
+  page,
+}) => {
+  let releaseResponse: (() => void) | undefined
+
+  await page.route("**/api/card-action", async (route) => {
+    await new Promise<void>((resolve) => {
+      releaseResponse = resolve
+    })
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action: "download",
+        status: "allowed",
+        message: "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。",
+      }),
+    })
+  })
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "下载 PNG" }).click()
+
+  await expect(page.getByRole("button", { name: "下载确认中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
+
+  releaseResponse?.()
+  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
 
 test("download and share limit responses show calm placeholder feedback", async ({

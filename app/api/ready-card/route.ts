@@ -2,9 +2,8 @@ import { cookies, headers } from "next/headers"
 import { NextResponse } from "next/server"
 
 import { createReadyCardRequestContext } from "@/lib/cards/ready-card-request-context"
-import { getNextReadyCardForVisitor } from "@/lib/cards/ready-card-repository"
+import { getRateLimitedNextReadyCardForVisitor } from "@/lib/cards/rate-limited-ready-card"
 import { createDatabaseClient } from "@/lib/db/client"
-import { checkAndConsumeRateLimit } from "@/lib/rate-limit/action-rate-limit"
 
 import type {
   ReadyCardErrorResponse,
@@ -23,13 +22,12 @@ export async function GET() {
       cookiesList: await cookies(),
       headersList: await headers(),
     })
-    const limit = await checkAndConsumeRateLimit({
+    const result = await getRateLimitedNextReadyCardForVisitor({
       client,
-      action: "refresh",
-      contextKey: context.requestContextKey,
+      context,
     })
 
-    if (!limit.allowed) {
+    if (result.status === "limited") {
       return NextResponse.json<ReadyCardLimitErrorResponse>(
         {
           error: "ready_card_limited",
@@ -37,14 +35,12 @@ export async function GET() {
         },
         {
           status: 429,
-          headers: { "Retry-After": String(limit.retryAfterSeconds) },
+          headers: { "Retry-After": String(result.limit.retryAfterSeconds) },
         }
       )
     }
 
-    const card = await getNextReadyCardForVisitor(client, context)
-
-    if (!card) {
+    if (!result.card) {
       return NextResponse.json<ReadyCardErrorResponse>(
         {
           error: "ready_card_not_found",
@@ -55,7 +51,7 @@ export async function GET() {
       )
     }
 
-    return NextResponse.json<ReadyCardResponse>({ card })
+    return NextResponse.json<ReadyCardResponse>({ card: result.card })
   } finally {
     client.sqlite.close()
   }

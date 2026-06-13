@@ -1,3 +1,7 @@
+import { cardActionNames, type CardActionName } from "@/lib/rate-limit/actions"
+
+export { cardActionNames, type CardActionName }
+
 export const readyCardAccents = ["dawn", "rain", "moon"] as const
 
 export type ReadyCardAccent = (typeof readyCardAccents)[number]
@@ -28,9 +32,6 @@ export type ReadyCardLimitErrorResponse = {
   error: ReadyCardLimitReason
   message: string
 }
-
-export const cardActionNames = ["download", "share"] as const
-export type CardActionName = (typeof cardActionNames)[number]
 
 export type CardActionRequest = {
   action: CardActionName
