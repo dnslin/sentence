@@ -1,3 +1,7 @@
+import { cardActionNames, type CardActionName } from "@/lib/rate-limit/actions"
+
+export { cardActionNames, type CardActionName }
+
 export const readyCardAccents = ["dawn", "rain", "moon"] as const
 
 export type ReadyCardAccent = (typeof readyCardAccents)[number]
@@ -17,9 +21,30 @@ export type ReadyCardResponse = {
 }
 
 export type ReadyCardUnavailableReason = "ready_card_not_found"
+export type ReadyCardLimitReason = "ready_card_limited"
 
 export type ReadyCardErrorResponse = {
   error: ReadyCardUnavailableReason
+  message: string
+}
+
+export type ReadyCardLimitErrorResponse = {
+  error: ReadyCardLimitReason
+  message: string
+}
+
+export type CardActionRequest = {
+  action: CardActionName
+}
+
+export type CardActionResponse = {
+  action: CardActionName
+  status: "allowed"
+  message: string
+}
+
+export type CardActionInvalidResponse = {
+  error: "invalid_card_action"
   message: string
 }
 
@@ -67,6 +92,48 @@ export function isReadyCardErrorResponse(
 
   return (
     isReadyCardUnavailableReason(response.error) &&
+    typeof response.message === "string"
+  )
+}
+
+export function isReadyCardLimitErrorResponse(
+  value: unknown
+): value is ReadyCardLimitErrorResponse {
+  if (typeof value !== "object" || value === null) return false
+
+  const response = value as Record<string, unknown>
+
+  return (
+    response.error === "ready_card_limited" &&
+    typeof response.message === "string"
+  )
+}
+
+export function isCardActionName(value: unknown): value is CardActionName {
+  return (
+    typeof value === "string" &&
+    cardActionNames.includes(value as CardActionName)
+  )
+}
+
+export function isCardActionRequest(
+  value: unknown
+): value is CardActionRequest {
+  if (typeof value !== "object" || value === null) return false
+
+  return isCardActionName((value as { action?: unknown }).action)
+}
+
+export function isCardActionResponse(
+  value: unknown
+): value is CardActionResponse {
+  if (typeof value !== "object" || value === null) return false
+
+  const response = value as Record<string, unknown>
+
+  return (
+    isCardActionName(response.action) &&
+    response.status === "allowed" &&
     typeof response.message === "string"
   )
 }

@@ -21,9 +21,8 @@ type CookieReader = {
 }
 
 function normalizeIpContext(headersList: HeaderReader) {
-  const forwardedFor = headersList.get("x-forwarded-for")
   const realIp = headersList.get("x-real-ip")
-  const rawValue = forwardedFor?.split(",")[0] ?? realIp ?? "unknown"
+  const rawValue = realIp ?? "unknown"
 
   return rawValue.trim().toLowerCase() || "unknown"
 }
