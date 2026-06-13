@@ -33,11 +33,11 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 
 **Validation & Error Matrix**:
 
-| Condition | Required behavior |
-| --- | --- |
-| `NODE_ENV !== "production"` | Control may be visible and discoverable when development visibility is part of the feature contract. |
-| `NODE_ENV === "production"` | Control is not rendered. |
-| Browser/accessibility snapshot contains the production-excluded label in production | Failing check; remove server-rendered output. |
+| Condition                                                                           | Required behavior                                                                                    |
+| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `NODE_ENV !== "production"`                                                         | Control may be visible and discoverable when development visibility is part of the feature contract. |
+| `NODE_ENV === "production"`                                                         | Control is not rendered.                                                                             |
+| Browser/accessibility snapshot contains the production-excluded label in production | Failing check; remove server-rendered output.                                                        |
 
 **Good/Base/Bad Cases**:
 
@@ -62,7 +62,11 @@ return <>{showPrototypeControl ? <PrototypeControl /> : null}</>
 #### Correct
 
 ```tsx
-{process.env.NODE_ENV !== "production" ? <nav aria-label="原型切换器">...</nav> : null}
+{
+  process.env.NODE_ENV !== "production" ? (
+    <nav aria-label="原型切换器">...</nav>
+  ) : null
+}
 ```
 
 ---
@@ -92,12 +96,12 @@ export function Page() {
 
 **Validation & Error Matrix**:
 
-| Condition | Required behavior |
-| --- | --- |
-| Public route receives `?state=error` for a mock-only state | Ignore it or route to a non-production-only debug seam; do not render a false production error. |
-| Public route receives repeated state values | Treat as unsupported and render the documented public default. |
-| Non-production debug seam is enabled | Debug state may render if it is visibly separate from product content. |
-| Production output contains debug/mock controls or copy implying fake failures | Failing check; remove or gate the debug behavior. |
+| Condition                                                                     | Required behavior                                                                               |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Public route receives `?state=error` for a mock-only state                    | Ignore it or route to a non-production-only debug seam; do not render a false production error. |
+| Public route receives repeated state values                                   | Treat as unsupported and render the documented public default.                                  |
+| Non-production debug seam is enabled                                          | Debug state may render if it is visibly separate from product content.                          |
+| Production output contains debug/mock controls or copy implying fake failures | Failing check; remove or gate the debug behavior.                                               |
 
 **Good/Base/Bad Cases**:
 
@@ -158,12 +162,12 @@ export default nextConfig
 
 **Validation & Error Matrix**:
 
-| Condition | Required behavior |
-| --- | --- |
-| Browser checks open `http://127.0.0.1:<port>` and Next warns about blocked dev resources | Add `"127.0.0.1"` to `allowedDevOrigins`. |
-| Browser checks use the canonical dev host, such as `localhost` | No extra origin is required. |
-| A LAN/custom host is needed | Add that exact host only after confirming it is required for local development. |
-| Production build/server | No wildcard CORS headers or broadened production response headers are introduced by this fix. |
+| Condition                                                                                | Required behavior                                                                             |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Browser checks open `http://127.0.0.1:<port>` and Next warns about blocked dev resources | Add `"127.0.0.1"` to `allowedDevOrigins`.                                                     |
+| Browser checks use the canonical dev host, such as `localhost`                           | No extra origin is required.                                                                  |
+| A LAN/custom host is needed                                                              | Add that exact host only after confirming it is required for local development.               |
+| Production build/server                                                                  | No wildcard CORS headers or broadened production response headers are introduced by this fix. |
 
 **Good/Base/Bad Cases**:
 
@@ -226,12 +230,12 @@ const transform = styles.transform
 
 **Validation & Error Matrix**:
 
-| Condition | Required behavior |
-| --- | --- |
-| Default motion uses a `motion-safe` transform utility | The relevant computed property may be non-neutral while computed `transform` remains `none`. |
-| Reduced motion neutralizes non-essential motion | Computed `transitionDuration` is `0s` or otherwise non-animated, and the relevant transform property is neutral. |
-| A check only asserts `transform !== "none"` for Tailwind rotate utilities | Treat as an invalid check; it can false-fail when rotate is emitted separately. |
-| A check only asserts `transform === "none"` under reduced motion | Incomplete; also inspect `rotate`, `scale`, or `translate` when those utilities are used. |
+| Condition                                                                 | Required behavior                                                                                                |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Default motion uses a `motion-safe` transform utility                     | The relevant computed property may be non-neutral while computed `transform` remains `none`.                     |
+| Reduced motion neutralizes non-essential motion                           | Computed `transitionDuration` is `0s` or otherwise non-animated, and the relevant transform property is neutral. |
+| A check only asserts `transform !== "none"` for Tailwind rotate utilities | Treat as an invalid check; it can false-fail when rotate is emitted separately.                                  |
+| A check only asserts `transform === "none"` under reduced motion          | Incomplete; also inspect `rotate`, `scale`, or `translate` when those utilities are used.                        |
 
 **Good/Base/Bad Cases**:
 
@@ -281,7 +285,9 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard })
 
 ```typescript
 function isReadyCardResponse(value: unknown): value is ReadyCardResponse
-function isReadyCardErrorResponse(value: unknown): value is ReadyCardErrorResponse
+function isReadyCardErrorResponse(
+  value: unknown
+): value is ReadyCardErrorResponse
 ```
 
 **Public error response**
@@ -328,7 +334,7 @@ export function QuietGalleryCard({
 - `PublicReadyCard` includes `illustrationUrl: string | null`; frontend code must consume this shared DTO rather than redefine the API response shape.
 - Non-OK `/api/ready-card` JSON must be treated as `unknown` and narrowed through the shared `isReadyCardErrorResponse` guard before reading current production error fields.
 - `ready_card_not_found` maps to calm empty-stock copy while preserving the current 图文卡片.
-- `ready_card_limited` maps to gentle limit copy while preserving the current 图文卡片 only through the local refresh-client compatibility seam until the rate-limit slice adds the production API contract.
+- `ready_card_limited` maps to gentle limit copy while preserving the current 图文卡片.
 - Unknown non-OK statuses, network failures, invalid JSON, and invalid success shapes map to non-technical retry-oriented failure copy.
 - API code must expose only safe same-origin generated-illustration paths as `illustrationUrl`; unsafe stored values must reach the frontend as `null`.
 - When `illustrationUrl` is a string, the card renderer must display a real image using that URL and the card's `sceneLabel` as the accessible label/alt text.
@@ -341,18 +347,18 @@ export function QuietGalleryCard({
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| API returns valid `{ card }` | Replace sentence and illustration accessible label together. |
-| API returns `illustrationUrl` as a string | Render a real image whose URL matches `illustrationUrl` and whose accessible name/alt is `sceneLabel`. |
-| API returns `illustrationUrl: null` | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`. |
-| API returns non-OK unknown status or invalid error payload | Keep current card, announce non-technical retry-oriented failure, re-enable refresh. |
-| API returns `ready_card_not_found` | Keep current card, announce calm empty-stock copy, re-enable refresh. |
-| Future/local refresh seam receives `ready_card_limited` | Keep current card, announce gentle limit copy, re-enable refresh without starting generation or automatic retry. |
-| API returns invalid JSON shape | Keep current card, announce failure, re-enable refresh. |
-| User clicks repeatedly while pending | Send at most one in-flight refresh request. |
-| Pending state active | Existing card remains visible and exposes busy/loading state. |
-| Reduced motion active | State remains understandable without relying on transform animation. |
+| Condition                                                  | Required behavior                                                                                                |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| API returns valid `{ card }`                               | Replace sentence and illustration accessible label together.                                                     |
+| API returns `illustrationUrl` as a string                  | Render a real image whose URL matches `illustrationUrl` and whose accessible name/alt is `sceneLabel`.           |
+| API returns `illustrationUrl: null`                        | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`.                              |
+| API returns non-OK unknown status or invalid error payload | Keep current card, announce non-technical retry-oriented failure, re-enable refresh.                             |
+| API returns `ready_card_not_found`                         | Keep current card, announce calm empty-stock copy, re-enable refresh.                                            |
+| API returns `ready_card_limited`                           | Keep current card, announce gentle limit copy, re-enable refresh without starting generation or automatic retry. |
+| API returns invalid JSON shape                             | Keep current card, announce failure, re-enable refresh.                                                          |
+| User clicks repeatedly while pending                       | Send at most one in-flight refresh request.                                                                      |
+| Pending state active                                       | Existing card remains visible and exposes busy/loading state.                                                    |
+| Reduced motion active                                      | State remains understandable without relying on transform animation.                                             |
 
 ### 5. Good/Base/Bad Cases
 
@@ -360,7 +366,7 @@ export function QuietGalleryCard({
 - Good: a card with `illustrationUrl` renders a browser-fetchable `<img>` using the same-origin stored WebP URL.
 - Base: a seeded/mock card with `illustrationUrl: null` renders the existing CSS fallback and remains accessible through `role="img"`.
 - Good: a failed refresh with `ready_card_not_found` keeps the visible card and announces that new 图文卡片 are still being prepared.
-- Good: a future/local refresh limit response keeps the visible card and announces gentle limit copy without starting a retry loop.
+- Good: a `ready_card_limited` response keeps the visible card and announces gentle limit copy without starting a retry loop.
 - Base: a delayed API response shows `刷新生成中`, disables the button, and leaves the current card visible.
 - Bad: optimistically replacing only the sentence before the server returns a canonical 图文绑定.
 - Bad: catching refresh failure by clearing the card or showing fake empty-stock UI.
@@ -376,7 +382,7 @@ For refresh UI work, use browser-visible tests that assert:
 - A delayed response shows pending copy/state and prevents duplicate requests.
 - A failed response keeps the current card, announces non-technical retry-oriented failure, and allows retry.
 - A `ready_card_not_found` response keeps the current card, announces calm empty-stock copy, and allows retry.
-- A future/local `ready_card_limited` response seam keeps the current card, announces gentle limit copy, and does not start an automatic retry/generation loop.
+- A `ready_card_limited` response keeps the current card, announces gentle limit copy, and does not start an automatic retry/generation loop.
 - Placeholder actions not implemented in the current slice still announce truthful placeholder copy.
 
 ### 7. Wrong vs Correct
@@ -403,11 +409,15 @@ setCurrentCard(body.card)
 ```
 
 ```tsx
-{card.illustrationUrl ? (
-  <img src={card.illustrationUrl} alt={card.sceneLabel} />
-) : (
-  <div role="img" aria-label={card.sceneLabel}>{/* fallback art */}</div>
-)}
+{
+  card.illustrationUrl ? (
+    <img src={card.illustrationUrl} alt={card.sceneLabel} />
+  ) : (
+    <div role="img" aria-label={card.sceneLabel}>
+      {/* fallback art */}
+    </div>
+  )
+}
 ```
 
 ---
@@ -424,7 +434,7 @@ Use this contract when a production-facing route keeps download/share as placeho
 
 ```typescript
 // app/api/card-action/route.ts
-POST /api/card-action
+POST / api / card - action
 ```
 
 **Request/response contracts**
@@ -462,24 +472,25 @@ function isReadyCardLimitErrorResponse(
 - A `ready_card_limited` response must announce calm limit copy, preserve the current 图文卡片, and re-enable the button.
 - Invalid JSON, network failures, unknown non-OK responses, and invalid success payloads map to non-technical retry-oriented copy.
 - UI code must treat endpoint JSON as `unknown` and narrow through shared guards; do not duplicate card-action payload types locally in components.
-- Pending placeholder action state should prevent duplicate same-action requests when practical and should use clear button copy such as `下载确认中` / `分享确认中`.
+- Pending placeholder action state must prevent duplicate and ambiguous concurrent placeholder requests. Disable both download/share buttons while either placeholder action is pending, and use clear button copy such as `下载确认中` / `分享确认中` for the active action.
 - This placeholder endpoint does not make real DOM-to-PNG or Web Share capabilities available; public copy must continue to say those capabilities are future slices.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| `POST /api/card-action` returns valid allowed `download` response | Announce truthful PNG placeholder copy. |
-| `POST /api/card-action` returns valid allowed `share` response | Announce truthful share placeholder copy. |
-| Endpoint returns `429 ready_card_limited` | Announce calm limit copy and keep current card visible. |
-| Endpoint returns invalid success JSON | Announce non-technical failure copy. |
-| Endpoint request fails or returns unknown non-OK JSON | Announce non-technical failure copy. |
-| User clicks the same placeholder action while pending | Do not send duplicate concurrent requests for that action when the button is disabled. |
+| Condition                                                                   | Required behavior                                                                            |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `POST /api/card-action` returns valid allowed `download` response           | Announce truthful PNG placeholder copy.                                                      |
+| `POST /api/card-action` returns valid allowed `share` response              | Announce truthful share placeholder copy.                                                    |
+| Endpoint returns `429 ready_card_limited`                                   | Announce calm limit copy and keep current card visible.                                      |
+| Endpoint returns invalid success JSON                                       | Announce non-technical failure copy.                                                         |
+| Endpoint request fails or returns unknown non-OK JSON                       | Announce non-technical failure copy.                                                         |
+| User clicks either placeholder action while a placeholder action is pending | Both placeholder action buttons are disabled; do not silently drop an enabled-looking click. |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: clicking `下载 PNG` calls `/api/card-action` with `{ action: "download" }`, receives allowed placeholder copy, and does not start client-side PNG generation.
 - Good: clicking `分享` calls `/api/card-action` with `{ action: "share" }`, receives allowed placeholder copy, and does not call `navigator.share` before the share slice.
+- Good: while a download placeholder request is pending, both `下载 PNG` and `分享` are disabled so the UI does not silently drop an enabled-looking share click.
 - Good: a `429 ready_card_limited` response keeps the current 图文卡片 and says the operation is too frequent in calm language.
 - Base: placeholder action network failure leaves the card visible and asks the user to retry later.
 - Bad: pure client-only placeholder clicks after the rate-limit slice; download/share server-side limits would not be exercised.
@@ -493,6 +504,7 @@ For placeholder action UI work, use browser-visible tests that assert:
 - `分享` sends `{ action: "share" }` to `/api/card-action` and announces allowed placeholder copy.
 - `429 ready_card_limited` from `/api/card-action` announces calm limit copy and re-enables the clicked button.
 - Failure or invalid endpoint payload leaves the current 图文卡片 visible and announces non-technical retry copy.
+- While one placeholder action is pending, both placeholder action buttons are disabled and no enabled-looking click is silently dropped.
 - `pnpm test:e2e`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
 
 ### 7. Wrong vs Correct

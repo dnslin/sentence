@@ -103,16 +103,16 @@ type ReadyCardErrorResponse = {
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| `JUHUA_DATABASE_PATH` missing | Use `process.cwd()/data/juhua.sqlite`. |
-| Database parent directory missing | Create it before opening SQLite. |
-| Local DB missing tables | `pnpm dev` and `pnpm start` run `pnpm db:setup` before serving; `pnpm db:migrate` creates schema from committed migrations. |
-| Seed run repeatedly | Existing sentence/card rows are updated by primary key, not duplicated. |
-| Runtime connection opens | Execute WAL and foreign-key pragmas on that connection. |
-| Ready card missing from API | Return `404` with a typed safe public payload: `{ error: "ready_card_not_found", message: string }`. The message uses calm Chinese copy and must not expose local store, setup commands, database, stack, model, provider, or generation details. |
-| Ready card missing from homepage | Render the calm public empty-stock state. Do not throw a local setup error, do not render a frontend mock fallback, and do not start browser-triggered generation. |
-| Row has unknown `status` or `accent` | DB constraints reject new invalid rows; repository filters existing corrupt rows as unavailable before returning public data. |
+| Condition                            | Required behavior                                                                                                                                                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `JUHUA_DATABASE_PATH` missing        | Use `process.cwd()/data/juhua.sqlite`.                                                                                                                                                                                                            |
+| Database parent directory missing    | Create it before opening SQLite.                                                                                                                                                                                                                  |
+| Local DB missing tables              | `pnpm dev` and `pnpm start` run `pnpm db:setup` before serving; `pnpm db:migrate` creates schema from committed migrations.                                                                                                                       |
+| Seed run repeatedly                  | Existing sentence/card rows are updated by primary key, not duplicated.                                                                                                                                                                           |
+| Runtime connection opens             | Execute WAL and foreign-key pragmas on that connection.                                                                                                                                                                                           |
+| Ready card missing from API          | Return `404` with a typed safe public payload: `{ error: "ready_card_not_found", message: string }`. The message uses calm Chinese copy and must not expose local store, setup commands, database, stack, model, provider, or generation details. |
+| Ready card missing from homepage     | Render the calm public empty-stock state. Do not throw a local setup error, do not render a frontend mock fallback, and do not start browser-triggered generation.                                                                                |
+| Row has unknown `status` or `accent` | DB constraints reject new invalid rows; repository filters existing corrupt rows as unavailable before returning public data.                                                                                                                     |
 
 > **Warning**: `node:sqlite` emits an ExperimentalWarning on Node 22. This is expected for the current local runtime and is not by itself a failing check when commands pass.
 
@@ -267,18 +267,18 @@ Required indexes:
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| Missing or invalid anonymous cookie | Mint and forward a valid anonymous cookie before page/API selection runs. |
-| Existing invalid cookie plus newly minted cookie | Forward only the valid minted cookie for `juhua_anonymous_id`; do not append behind the invalid value. |
-| Public HTTPS request reaches Next through HTTP reverse proxy | Set anonymous cookie with `Secure` when trusted forwarded proto is HTTPS. |
-| Same anonymous cookie with changed IP headers | Keep the same `visitorKey`; IP context must not reset recent-card history. |
-| Same visitor sends concurrent refresh requests | Serialize selection/insert so responses do not choose the same next card from the same recent snapshot. |
-| More than 50 ready cards exist | Do not return any card ID from the same visitor's prior 50 served cards. |
-| All ready cards are inside the prior 50 | Return the least-recent ready fallback, not `ready_card_not_found`. |
-| Visitor has stale future-dated view rows | Clamp or remove stale future rows so new rows do not stay anchored in the future. |
-| No ready cards exist | Return the existing `404 { error: "ready_card_not_found" }` API response or homepage setup error. |
-| Runtime connection inserts view for missing card | Foreign-key enforcement rejects the write. |
+| Condition                                                    | Required behavior                                                                                       |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Missing or invalid anonymous cookie                          | Mint and forward a valid anonymous cookie before page/API selection runs.                               |
+| Existing invalid cookie plus newly minted cookie             | Forward only the valid minted cookie for `juhua_anonymous_id`; do not append behind the invalid value.  |
+| Public HTTPS request reaches Next through HTTP reverse proxy | Set anonymous cookie with `Secure` when trusted forwarded proto is HTTPS.                               |
+| Same anonymous cookie with changed IP headers                | Keep the same `visitorKey`; IP context must not reset recent-card history.                              |
+| Same visitor sends concurrent refresh requests               | Serialize selection/insert so responses do not choose the same next card from the same recent snapshot. |
+| More than 50 ready cards exist                               | Do not return any card ID from the same visitor's prior 50 served cards.                                |
+| All ready cards are inside the prior 50                      | Return the least-recent ready fallback, not `ready_card_not_found`.                                     |
+| Visitor has stale future-dated view rows                     | Clamp or remove stale future rows so new rows do not stay anchored in the future.                       |
+| No ready cards exist                                         | Return the existing `404 { error: "ready_card_not_found" }` API response or homepage setup error.       |
+| Runtime connection inserts view for missing card             | Foreign-key enforcement rejects the write.                                                              |
 
 ### 5. Good/Base/Bad Cases
 
@@ -388,8 +388,8 @@ This path protects public actions without accounts:
 
 ```text
 proxy.ts anonymous cookie
-  → createReadyCardRequestContext(cookie + IP)
-  → checkAndConsumeRateLimit(...)
+  → createReadyCardRequestContext(cookie + trusted IP fallback)
+  → getRateLimitedNextReadyCardForVisitor(...) or checkAndConsumeRateLimit(...)
   → protected action route
   → public UI announcement
 ```
@@ -419,9 +419,11 @@ const rateLimitConfigs = {
 } as const
 ```
 
-**Service boundary**
+**Service boundaries**
 
 ```typescript
+const rateLimitRetentionMs = 3 * 24 * rateLimitWindowMs
+
 async function checkAndConsumeRateLimit(input: {
   client: DatabaseClient
   action: RateLimitedAction
@@ -430,6 +432,22 @@ async function checkAndConsumeRateLimit(input: {
 }): Promise<
   | { allowed: true; remaining: number; resetAt: Date }
   | { allowed: false; retryAfterSeconds: number; resetAt: Date }
+>
+
+async function checkAndConsumeRateLimitInTransaction(input: {
+  client: DatabaseClient
+  action: RateLimitedAction
+  contextKey: string
+  currentTime: Date
+}): Promise<RateLimitResult>
+
+async function getRateLimitedNextReadyCardForVisitor(input: {
+  client: DatabaseClient
+  context: ReadyCardRequestContext
+  now?: () => Date
+}): Promise<
+  | { status: "allowed"; card: PublicReadyCard | null }
+  | { status: "limited"; limit: Extract<RateLimitResult, { allowed: false }> }
 >
 ```
 
@@ -470,39 +488,51 @@ type ReadyCardLimitErrorResponse = {
 
 ### 3. Contracts
 
-- Limits use `ReadyCardRequestContext.requestContextKey`, which is derived from the anonymous cookie plus normalized IP context. Do not use `visitorKey` for rate limits; recent-card history intentionally remains cookie-only.
+- Limits use `ReadyCardRequestContext.requestContextKey`, which is derived from the anonymous cookie plus trusted IP context. Do not use `visitorKey` for rate limits; recent-card history intentionally remains cookie-only.
+- `requestContextKey` must not trust spoofable `x-forwarded-for` values. Use `x-real-ip` when the deployment provides it; otherwise fall back to `unknown` so a client cannot rotate forwarded headers to create fresh quota windows.
 - Persist only hashed `context_key` values. Do not persist raw `juhua_anonymous_id`, raw IP headers, user-agent strings, or full cookie headers in rate-limit rows.
 - `proxy.ts` must match every public API endpoint that depends on anonymous identity, including `/`, `/api/ready-card`, and `/api/card-action`.
-- `GET /api/ready-card` must consume the `refresh` limit before selecting a card or inserting `ready_card_views`.
-- A blocked refresh returns HTTP `429`, safe Chinese copy, and a `Retry-After` header; it must not call ready-card selection and must not insert `ready_card_views`.
+- `/` and `GET /api/ready-card` must use the same refresh-limited selection service. Homepage reloads must not bypass refresh quota.
+- Refresh quota consumption and ready-card select/record must share one `BEGIN IMMEDIATE` transaction through `getRateLimitedNextReadyCardForVisitor(...)` so selection failures roll back quota consumption.
+- A blocked refresh returns HTTP `429` from `/api/ready-card` or a calm limited homepage state from `/`; it must not call ready-card selection and must not insert `ready_card_views`.
 - `POST /api/card-action` is a no-op product endpoint for placeholder `download` and `share` actions until real download/share slices exist. It records/limits the action but must not generate PNG files, invoke Web Share, or claim those capabilities are implemented.
 - Counter updates must run inside `BEGIN IMMEDIATE` on the runtime SQLite connection so same-key concurrent requests cannot over-admit above the configured threshold.
+- The limiter must prune windows older than `rateLimitRetentionMs` on the consume path so `rate_limit_windows` remains bounded.
 - Route handlers must parse request/response JSON as `unknown` at boundaries and narrow through shared guards from `lib/cards/public-ready-card.ts`.
 - Public limit copy must not mention thresholds, SQLite, database setup, cookies, IPs, stack traces, model/provider failures, or internal quota rows.
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| Refresh count is below `120` for the current one-hour window | Increment the `refresh` row and continue to ready-card selection. |
-| Refresh count has reached `120` | Return `429 { error: "ready_card_limited" }`, set `Retry-After`, and leave `ready_card_views` unchanged. |
-| Download/share count is below `60` | Increment the matching action row and return a truthful placeholder `allowed` response. |
-| Download/share count has reached `60` | Return `429 { error: "ready_card_limited" }` with calm copy. |
-| Same context reaches the next fixed hourly window | Create/consume a new window row and allow the action again. |
-| Request body to `/api/card-action` is missing, malformed JSON, or an unsupported action | Return `400 { error: "invalid_card_action" }` with safe copy and do not consume any quota. |
-| Anonymous cookie is missing/invalid on a matched route | Proxy mints and forwards a valid anonymous cookie before the route computes `requestContextKey`. |
-| IP changes for the same cookie | Rate-limit identity changes because `requestContextKey` includes IP context; recent-card `visitorKey` history remains stable. |
-| Two clients consume the same action/context/window concurrently near the threshold | Immediate transaction serialization allows at most the configured number of successful consumes. |
+| Condition                                                                               | Required behavior                                                                                                                                         |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Refresh count is below `120` for the current one-hour window                            | Increment the `refresh` row and continue to ready-card selection inside the same transaction.                                                             |
+| Refresh count has reached `120`                                                         | `/api/ready-card` returns `429 { error: "ready_card_limited" }` with `Retry-After`; `/` renders calm limited UI; both leave `ready_card_views` unchanged. |
+| Download/share count is below `60`                                                      | Increment the matching action row and return a truthful placeholder `allowed` response.                                                                   |
+| Download/share count has reached `60`                                                   | Return `429 { error: "ready_card_limited" }` with calm copy.                                                                                              |
+| Same context reaches the next fixed hourly window                                       | Create/consume a new window row and allow the action again.                                                                                               |
+| Request body to `/api/card-action` is missing, malformed JSON, or an unsupported action | Return `400 { error: "invalid_card_action" }` with safe copy and do not consume any quota.                                                                |
+| Anonymous cookie is missing/invalid on a matched route                                  | Proxy mints and forwards a valid anonymous cookie before the route computes `requestContextKey`.                                                          |
+| Client spoofs or rotates `x-forwarded-for` for the same cookie                          | Ignore it for rate-limit identity; all requests remain in one quota window unless trusted `x-real-ip` changes.                                            |
+| Trusted `x-real-ip` changes for the same cookie                                         | Rate-limit identity changes because `requestContextKey` includes trusted IP context; recent-card `visitorKey` history remains stable.                     |
+| Ready-card selection throws after refresh quota is checked                              | Roll back the shared transaction so quota is not consumed for a failed card response.                                                                     |
+| Old rate-limit windows are older than `rateLimitRetentionMs`                            | Prune them during a consume transaction.                                                                                                                  |
+| Two clients consume the same action/context/window concurrently near the threshold      | Immediate transaction serialization allows at most the configured number of successful consumes.                                                          |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: a visitor can refresh up to the hourly exploration limit, then receives calm limit copy while the current 图文卡片 remains visible.
 - Good: blocked refresh requests do not add `ready_card_views`, so rate-limit failures do not poison recent-card avoidance.
+- Good: `/` and `/api/ready-card` share the same refresh-limited selection service, so homepage reloads cannot bypass refresh quota.
+- Good: a ready-card selection failure rolls back the refresh quota consume because both happen in one immediate transaction.
+- Good: spoofed `x-forwarded-for` values do not create fresh quota windows for the same anonymous cookie.
+- Good: expired rate-limit windows older than the retention horizon are pruned during consume.
 - Good: download/share placeholder button clicks call `/api/card-action`, are counted separately, and still say the real PNG/share capabilities are future slices.
 - Good: rate-limit rows contain action names, hashed context keys, window starts, and counts only.
 - Base: an invalid `/api/card-action` body returns a safe `400` without consuming quota.
 - Bad: using raw IP-only keys; shared networks would collide and the issue's Cookie-plus-IP requirement would be unmet.
+- Bad: trusting user-supplied `x-forwarded-for`; clients could rotate the header to bypass limits.
 - Bad: applying the refresh limit after `getNextReadyCardForVisitor(...)`; blocked requests would still consume card history.
+- Bad: checking refresh quota and selecting/recording the card in separate transactions; transient selection failures would burn quota without returning a card.
 - Bad: leaving download/share as pure client announcements after this slice; server-side download/share limit acceptance would be unverifiable.
 
 ### 6. Tests Required
@@ -511,11 +541,16 @@ For changes to this path, add or update behavior tests that assert:
 
 - `checkAndConsumeRateLimit(...)` allows below-threshold actions, blocks at threshold, and resets in the next fixed hourly window for `refresh`, `download`, and `share`.
 - Rate-limit rows persist hashed context keys and never raw cookie/IP values.
+- Spoofed `x-forwarded-for` values do not create separate quota windows for the same anonymous cookie.
+- Expired rate-limit windows older than `rateLimitRetentionMs` are pruned.
 - Multi-connection or concurrent same-key consumption does not exceed the configured threshold.
+- Ready-card selection failures inside `getRateLimitedNextReadyCardForVisitor(...)` roll back refresh quota consumption.
 - `GET /api/ready-card` returns `429 ready_card_limited` at the refresh threshold and does not insert `ready_card_views` when blocked.
+- `/` renders calm homepage limit feedback at the refresh threshold and does not select/record another card.
 - `POST /api/card-action` allows, blocks, resets, and safely rejects invalid action bodies.
 - Browser-visible refresh limit keeps the current 图文卡片 and announces calm copy.
 - Browser-visible download/share allowed states keep truthful placeholder copy, and blocked states show calm limit copy.
+- Tests should derive limit counts from `rateLimitConfigs` instead of hardcoding `120` or `60`.
 - `pnpm test:rate-limit`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
 
 ### 7. Wrong vs Correct
@@ -535,28 +570,40 @@ return NextResponse.json({ card })
 ```
 
 ```typescript
-// Leaks raw request facts and does not use the accepted anonymous context.
+// Leaks raw/spoofable request facts and lets clients rotate quota windows.
 const contextKey = headersList.get("x-forwarded-for") ?? "unknown"
+```
+
+```typescript
+// Separate transactions: selection failures can burn quota without a card.
+const limit = await checkAndConsumeRateLimit({
+  client,
+  action: "refresh",
+  contextKey: context.requestContextKey,
+})
+if (!limit.allowed) return limitedResponse()
+const card = await getNextReadyCardForVisitor(client, context)
 ```
 
 #### Correct
 
 ```typescript
 const context = createReadyCardRequestContext({ cookiesList, headersList })
-const limit = await checkAndConsumeRateLimit({
-  client,
-  action: "refresh",
-  contextKey: context.requestContextKey,
-})
+const result = await getRateLimitedNextReadyCardForVisitor({ client, context })
 
-if (!limit.allowed) {
+if (result.status === "limited") {
   return NextResponse.json(
     { error: "ready_card_limited", message: publicLimitMessage },
-    { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+    {
+      status: 429,
+      headers: { "Retry-After": String(result.limit.retryAfterSeconds) },
+    }
   )
 }
 
-const card = await getNextReadyCardForVisitor(client, context)
+return result.card
+  ? NextResponse.json({ card: result.card })
+  : NextResponse.json(notFoundPayload, { status: 404 })
 ```
 
 ---
@@ -658,16 +705,16 @@ hitokoto_sentence_metadata(
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| Hitokoto HTTP response has `ok=false` | Throw a `HitokotoFetchError` with the HTTP status. |
-| Response body is not an object | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
-| `hitokoto` is missing, empty, non-string, shorter than 6, or longer than 30 | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
-| Optional string field is a number/object/array | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
-| Optional integer field is a string/float/object/array | Throw a `HitokotoNormalizationError`; do not write to SQLite. |
-| Same usable Hitokoto UUID is ingested again | Return the existing sentence with `inserted: false`; keep one `sentences` row and one metadata row. |
+| Condition                                                                          | Required behavior                                                                                   |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Hitokoto HTTP response has `ok=false`                                              | Throw a `HitokotoFetchError` with the HTTP status.                                                  |
+| Response body is not an object                                                     | Throw a `HitokotoNormalizationError`; do not write to SQLite.                                       |
+| `hitokoto` is missing, empty, non-string, shorter than 6, or longer than 30        | Throw a `HitokotoNormalizationError`; do not write to SQLite.                                       |
+| Optional string field is a number/object/array                                     | Throw a `HitokotoNormalizationError`; do not write to SQLite.                                       |
+| Optional integer field is a string/float/object/array                              | Throw a `HitokotoNormalizationError`; do not write to SQLite.                                       |
+| Same usable Hitokoto UUID is ingested again                                        | Return the existing sentence with `inserted: false`; keep one `sentences` row and one metadata row. |
 | UUID is missing, blank, or malformed but fallback identity matches an existing row | Return the existing sentence with `inserted: false`; keep one `sentences` row and one metadata row. |
-| Existing mock ready-card seed rows have no Hitokoto metadata | They remain valid; ready-card reads still join `cards → sentences` only. |
+| Existing mock ready-card seed rows have no Hitokoto metadata                       | They remain valid; ready-card reads still join `cards → sentences` only.                            |
 
 ### 5. Good/Base/Bad Cases
 
@@ -828,18 +875,18 @@ generation_attempts(
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| `XAI_API_KEY` missing | Stop before SDK construction/xAI calls with clear setup guidance. |
-| Prompt rewrite returns blank/non-string or throws | Use deterministic fallback prompt and keep image generation running. |
-| First image generation call throws | Retry once; if retry succeeds, record `image_generated` with `image_generation_attempts=2`. |
-| Both image generation calls throw | Record `failed`, `error_stage='image_generation'`, and no image metadata. |
-| First image response has invalid/empty base64 | Retry once. |
-| Base64 remains invalid after retry | Record `failed`, `error_stage='image_validation'`, and no image metadata. |
-| Valid base64 omits padding | Accept it and compute metadata from decoded bytes. |
-| Error text contains API keys or bearer/sk-like tokens | Redact before persistence or smoke output. |
-| Smoke command has credentials | Apply migrations before opening the shared DB, then run live Hitokoto + xAI path. |
-| Smoke command lacks credentials | Do not run migrations, open DB, or call xAI; print setup guidance and exit non-zero. |
+| Condition                                             | Required behavior                                                                           |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `XAI_API_KEY` missing                                 | Stop before SDK construction/xAI calls with clear setup guidance.                           |
+| Prompt rewrite returns blank/non-string or throws     | Use deterministic fallback prompt and keep image generation running.                        |
+| First image generation call throws                    | Retry once; if retry succeeds, record `image_generated` with `image_generation_attempts=2`. |
+| Both image generation calls throw                     | Record `failed`, `error_stage='image_generation'`, and no image metadata.                   |
+| First image response has invalid/empty base64         | Retry once.                                                                                 |
+| Base64 remains invalid after retry                    | Record `failed`, `error_stage='image_validation'`, and no image metadata.                   |
+| Valid base64 omits padding                            | Accept it and compute metadata from decoded bytes.                                          |
+| Error text contains API keys or bearer/sk-like tokens | Redact before persistence or smoke output.                                                  |
+| Smoke command has credentials                         | Apply migrations before opening the shared DB, then run live Hitokoto + xAI path.           |
+| Smoke command lacks credentials                       | Do not run migrations, open DB, or call xAI; print setup guidance and exit non-zero.        |
 
 ### 5. Good/Base/Bad Cases
 
@@ -950,7 +997,11 @@ type ReadyPoolReplenishmentSummary = {
   readyInventoryGrowthCount: number
   failedCount: number
   reservedCount: number
-  skippedReason: "inventory_above_threshold" | "daily_cap_exhausted" | "stopped" | null
+  skippedReason:
+    | "inventory_above_threshold"
+    | "daily_cap_exhausted"
+    | "stopped"
+    | null
   errors: ReadyPoolErrorSummary[]
 }
 
@@ -1003,20 +1054,20 @@ ready_pool_generation_days(
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| `XAI_API_KEY` missing for production CLI | Print setup guidance for `pnpm worker:ready-pool`, set non-zero exit code, and do not start the worker loop. |
-| Ready inventory is `50` or higher | Return a summary with `skippedReason='inventory_above_threshold'` and do not call the generator. |
-| Ready inventory is below `50` | Reserve capacity and run one generation job at a time until inventory reaches `200`, cap is exhausted, or stopped. |
-| Daily row is missing | First reservation for that UTC day inserts `generation_count=1`. |
-| Daily row has `generation_count >= 250` | Return `cap_exhausted` without calling the generator. |
-| Process restarts on the same day | Existing `ready_pool_generation_days` count still limits further reservations. |
-| Generation returns `status='failed'` | Increment failed summary count, keep failure inspectable through persisted status, re-count inventory, and continue if cap remains. |
-| Generator throws | Treat as a failed worker outcome, include a sanitized `generation_exception` error summary, re-count inventory, and continue unless stopped/capped. |
-| Replenishment pass throws a recoverable infrastructure error | Report a sanitized `replenishment_pass` error and continue the long-running loop's next iteration. |
-| `onSummary` throws | Report a sanitized `summary_observer` error and continue the long-running loop. |
-| Stop signal is set between jobs | Do not reserve/start another job; return `skippedReason='stopped'`. |
-| Stop signal is set during idle sleep | Wake the production sleep promptly and exit the loop without waiting the full interval. |
+| Condition                                                    | Required behavior                                                                                                                                   |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `XAI_API_KEY` missing for production CLI                     | Print setup guidance for `pnpm worker:ready-pool`, set non-zero exit code, and do not start the worker loop.                                        |
+| Ready inventory is `50` or higher                            | Return a summary with `skippedReason='inventory_above_threshold'` and do not call the generator.                                                    |
+| Ready inventory is below `50`                                | Reserve capacity and run one generation job at a time until inventory reaches `200`, cap is exhausted, or stopped.                                  |
+| Daily row is missing                                         | First reservation for that UTC day inserts `generation_count=1`.                                                                                    |
+| Daily row has `generation_count >= 250`                      | Return `cap_exhausted` without calling the generator.                                                                                               |
+| Process restarts on the same day                             | Existing `ready_pool_generation_days` count still limits further reservations.                                                                      |
+| Generation returns `status='failed'`                         | Increment failed summary count, keep failure inspectable through persisted status, re-count inventory, and continue if cap remains.                 |
+| Generator throws                                             | Treat as a failed worker outcome, include a sanitized `generation_exception` error summary, re-count inventory, and continue unless stopped/capped. |
+| Replenishment pass throws a recoverable infrastructure error | Report a sanitized `replenishment_pass` error and continue the long-running loop's next iteration.                                                  |
+| `onSummary` throws                                           | Report a sanitized `summary_observer` error and continue the long-running loop.                                                                     |
+| Stop signal is set between jobs                              | Do not reserve/start another job; return `skippedReason='stopped'`.                                                                                 |
+| Stop signal is set during idle sleep                         | Wake the production sleep promptly and exit the loop without waiting the full interval.                                                             |
 
 ### 5. Good/Base/Bad Cases
 
@@ -1118,7 +1169,9 @@ const generatedIllustrationPublicPathPrefix = "/generated-illustrations"
 function resolveGeneratedIllustrationRoot(): string
 function isValidGeneratedIllustrationFilename(filename: string): boolean
 function resolveGeneratedIllustrationFilePath(filename: string): string | null
-function resolveGeneratedIllustrationPublicPath(publicPath: string): string | null
+function resolveGeneratedIllustrationPublicPath(
+  publicPath: string
+): string | null
 function resolveGeneratedIllustrationFilePathFromPublicPath(
   publicPath: string
 ): string | null
@@ -1146,8 +1199,23 @@ async function generateReadyCardForHitokotoSentence(input: {
   fetchFn?: HitokotoFetch
   xaiClient: XaiGenerationClient
 }): Promise<
-  | { status: "ready"; card: PublicReadyCard; illustration: { publicPath: string; byteLength: number; sha256: string } }
-  | { status: "failed"; error: { stage: "image_generation" | "image_validation" | "image_storage" | "image_conversion" | "prompt_rewrite"; message: string } }
+  | {
+      status: "ready"
+      card: PublicReadyCard
+      illustration: { publicPath: string; byteLength: number; sha256: string }
+    }
+  | {
+      status: "failed"
+      error: {
+        stage:
+          | "image_generation"
+          | "image_validation"
+          | "image_storage"
+          | "image_conversion"
+          | "prompt_rewrite"
+        message: string
+      }
+    }
 >
 ```
 
@@ -1180,20 +1248,20 @@ async function generateReadyCardForHitokotoSentence(input: {
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required behavior |
-| --- | --- |
-| `JUHUA_GENERATED_ILLUSTRATIONS_DIR` missing | Use `process.cwd()/data/generated-illustrations`. |
-| Configured illustration root parent is missing | Create the root directory before conversion. |
-| Configured illustration root is a file, not a directory | Return/persist `failed` with `error_stage='image_storage'`; do not create a ready card. |
-| Input bytes cannot be decoded/converted by Sharp | Return/persist `failed` with `error_stage='image_conversion'`; remove temp files; do not create a ready card. |
-| Final rename/write/stat fails | Return/persist `failed` with `error_stage='image_storage'`; remove temp/final partial files. |
-| WebP storage succeeds but card DB write fails | Remove the stored WebP and record the attempt as `failed`; do not leave an orphan durable asset. |
-| Regenerating a canonical card replaces an old safe generated WebP path | Keep the new DB path and remove the old local WebP file after successful persistence. |
-| Legacy DB has duplicate `(sentence_id, style_version)` card rows before the unique index migration | Deterministically keep one canonical row, remove dependent view rows for duplicates, then create the unique index. |
-| `cards.illustration_path` contains an external URL, absolute path, traversal-like value, or non-UUID filename | Public `illustrationUrl` is `null`; do not expose the unsafe value to the client. |
-| Public route receives a traversal or non-UUID filename | Return `404`; do not read from the filesystem. |
-| Public route receives a valid filename for a missing file | Return `404`. |
-| Public route receives a valid stored WebP filename | Stream a `200` response with `Content-Type: image/webp`. |
+| Condition                                                                                                     | Required behavior                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `JUHUA_GENERATED_ILLUSTRATIONS_DIR` missing                                                                   | Use `process.cwd()/data/generated-illustrations`.                                                                  |
+| Configured illustration root parent is missing                                                                | Create the root directory before conversion.                                                                       |
+| Configured illustration root is a file, not a directory                                                       | Return/persist `failed` with `error_stage='image_storage'`; do not create a ready card.                            |
+| Input bytes cannot be decoded/converted by Sharp                                                              | Return/persist `failed` with `error_stage='image_conversion'`; remove temp files; do not create a ready card.      |
+| Final rename/write/stat fails                                                                                 | Return/persist `failed` with `error_stage='image_storage'`; remove temp/final partial files.                       |
+| WebP storage succeeds but card DB write fails                                                                 | Remove the stored WebP and record the attempt as `failed`; do not leave an orphan durable asset.                   |
+| Regenerating a canonical card replaces an old safe generated WebP path                                        | Keep the new DB path and remove the old local WebP file after successful persistence.                              |
+| Legacy DB has duplicate `(sentence_id, style_version)` card rows before the unique index migration            | Deterministically keep one canonical row, remove dependent view rows for duplicates, then create the unique index. |
+| `cards.illustration_path` contains an external URL, absolute path, traversal-like value, or non-UUID filename | Public `illustrationUrl` is `null`; do not expose the unsafe value to the client.                                  |
+| Public route receives a traversal or non-UUID filename                                                        | Return `404`; do not read from the filesystem.                                                                     |
+| Public route receives a valid filename for a missing file                                                     | Return `404`.                                                                                                      |
+| Public route receives a valid stored WebP filename                                                            | Stream a `200` response with `Content-Type: image/webp`.                                                           |
 
 ### 5. Good/Base/Bad Cases
 
