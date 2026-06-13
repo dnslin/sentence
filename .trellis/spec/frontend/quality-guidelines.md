@@ -293,15 +293,19 @@ type ReadyCardErrorResponse = {
 }
 ```
 
-**Future limit response seam**
+**Public limit response**
 
-Until the rate-limit slice wires production API responses, `ready_card_limited` handling is a local refresh-client compatibility branch, not part of the current `/api/ready-card` public API type.
+After the rate-limit slice, `ready_card_limited` is a shared public API response for refresh and placeholder card actions. UI code must import the shared type guard instead of redefining the shape locally.
 
 ```typescript
-type RefreshLimitResponse = {
+type ReadyCardLimitErrorResponse = {
   error: "ready_card_limited"
   message: string
 }
+
+function isReadyCardLimitErrorResponse(
+  value: unknown
+): value is ReadyCardLimitErrorResponse
 ```
 
 **Renderer state**
@@ -404,6 +408,128 @@ setCurrentCard(body.card)
 ) : (
   <div role="img" aria-label={card.sceneLabel}>{/* fallback art */}</div>
 )}
+```
+
+---
+
+## Placeholder Download/Share Action UI State
+
+### 1. Scope / Trigger
+
+Use this contract when a production-facing route keeps download/share as placeholder actions while still recording or limiting those public action attempts through the server.
+
+### 2. Signatures
+
+**Card action endpoint**
+
+```typescript
+// app/api/card-action/route.ts
+POST /api/card-action
+```
+
+**Request/response contracts**
+
+```typescript
+type CardActionRequest = {
+  action: "download" | "share"
+}
+
+type CardActionResponse = {
+  action: "download" | "share"
+  status: "allowed"
+  message: string
+}
+
+type ReadyCardLimitErrorResponse = {
+  error: "ready_card_limited"
+  message: string
+}
+```
+
+**Shared guards**
+
+```typescript
+function isCardActionResponse(value: unknown): value is CardActionResponse
+function isReadyCardLimitErrorResponse(
+  value: unknown
+): value is ReadyCardLimitErrorResponse
+```
+
+### 3. Contracts
+
+- Download/share buttons may call `POST /api/card-action` to record and rate-limit placeholder action attempts.
+- An allowed response must preserve truthful placeholder copy: it may say PNG download/share will arrive in a later slice, but must not create or imply a real file/share operation.
+- A `ready_card_limited` response must announce calm limit copy, preserve the current 图文卡片, and re-enable the button.
+- Invalid JSON, network failures, unknown non-OK responses, and invalid success payloads map to non-technical retry-oriented copy.
+- UI code must treat endpoint JSON as `unknown` and narrow through shared guards; do not duplicate card-action payload types locally in components.
+- Pending placeholder action state should prevent duplicate same-action requests when practical and should use clear button copy such as `下载确认中` / `分享确认中`.
+- This placeholder endpoint does not make real DOM-to-PNG or Web Share capabilities available; public copy must continue to say those capabilities are future slices.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `POST /api/card-action` returns valid allowed `download` response | Announce truthful PNG placeholder copy. |
+| `POST /api/card-action` returns valid allowed `share` response | Announce truthful share placeholder copy. |
+| Endpoint returns `429 ready_card_limited` | Announce calm limit copy and keep current card visible. |
+| Endpoint returns invalid success JSON | Announce non-technical failure copy. |
+| Endpoint request fails or returns unknown non-OK JSON | Announce non-technical failure copy. |
+| User clicks the same placeholder action while pending | Do not send duplicate concurrent requests for that action when the button is disabled. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: clicking `下载 PNG` calls `/api/card-action` with `{ action: "download" }`, receives allowed placeholder copy, and does not start client-side PNG generation.
+- Good: clicking `分享` calls `/api/card-action` with `{ action: "share" }`, receives allowed placeholder copy, and does not call `navigator.share` before the share slice.
+- Good: a `429 ready_card_limited` response keeps the current 图文卡片 and says the operation is too frequent in calm language.
+- Base: placeholder action network failure leaves the card visible and asks the user to retry later.
+- Bad: pure client-only placeholder clicks after the rate-limit slice; download/share server-side limits would not be exercised.
+- Bad: changing button copy to imply real PNG or system share support before later slices implement those capabilities.
+
+### 6. Tests Required
+
+For placeholder action UI work, use browser-visible tests that assert:
+
+- `下载 PNG` sends `{ action: "download" }` to `/api/card-action` and announces allowed placeholder copy.
+- `分享` sends `{ action: "share" }` to `/api/card-action` and announces allowed placeholder copy.
+- `429 ready_card_limited` from `/api/card-action` announces calm limit copy and re-enables the clicked button.
+- Failure or invalid endpoint payload leaves the current 图文卡片 visible and announces non-technical retry copy.
+- `pnpm test:e2e`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+// Bypasses server-side action limiting after the rate-limit slice.
+<Button onClick={() => announce("PNG 下载会在后续切片接入。")}>下载 PNG</Button>
+```
+
+```tsx
+// Claims a real capability before the owning slice exists.
+<Button onClick={() => announce("已下载 PNG")}>下载 PNG</Button>
+```
+
+#### Correct
+
+```tsx
+const response = await fetch("/api/card-action", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ action: "download" }),
+})
+const body: unknown = await response.json().catch(() => null)
+
+if (!response.ok) {
+  announce(
+    isReadyCardLimitErrorResponse(body)
+      ? cardActionLimitAnnouncement
+      : cardActionFailureAnnouncement
+  )
+  return
+}
+
+if (!isCardActionResponse(body)) throw new Error("invalid action response")
+announce(body.message)
 ```
 
 ---

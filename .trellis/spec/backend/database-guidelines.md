@@ -38,7 +38,8 @@ SQLite row → Drizzle repository → PublicReadyCard DTO → GET /api/ready-car
   "db:setup": "pnpm db:migrate && pnpm db:seed",
   "dev": "pnpm db:setup && next dev",
   "start": "pnpm db:setup && next start",
-  "test:e2e": "playwright test"
+  "test:e2e": "playwright test",
+  "test:rate-limit": "node --import tsx --test node-tests/rate-limit.test.ts"
 }
 ```
 
@@ -373,6 +374,189 @@ try {
   client.sqlite.exec("ROLLBACK")
   throw error
 }
+```
+
+---
+
+## Scenario: Public action rate limiting with anonymous context
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches public action limits, `/api/ready-card`, `/api/card-action`, anonymous request context, `proxy.ts`, Drizzle schema/migrations, or browser-visible limit feedback.
+
+This path protects public actions without accounts:
+
+```text
+proxy.ts anonymous cookie
+  → createReadyCardRequestContext(cookie + IP)
+  → checkAndConsumeRateLimit(...)
+  → protected action route
+  → public UI announcement
+```
+
+### 2. Signatures
+
+**Focused test command**
+
+```json
+{
+  "test:rate-limit": "node --import tsx --test node-tests/rate-limit.test.ts"
+}
+```
+
+**Rate-limited actions**
+
+```typescript
+const rateLimitWindowMs = 60 * 60 * 1000
+const rateLimitedActions = ["refresh", "download", "share"] as const
+
+type RateLimitedAction = (typeof rateLimitedActions)[number]
+
+const rateLimitConfigs = {
+  refresh: { limit: 120, windowMs: rateLimitWindowMs },
+  download: { limit: 60, windowMs: rateLimitWindowMs },
+  share: { limit: 60, windowMs: rateLimitWindowMs },
+} as const
+```
+
+**Service boundary**
+
+```typescript
+async function checkAndConsumeRateLimit(input: {
+  client: DatabaseClient
+  action: RateLimitedAction
+  contextKey: string
+  now?: () => Date
+}): Promise<
+  | { allowed: true; remaining: number; resetAt: Date }
+  | { allowed: false; retryAfterSeconds: number; resetAt: Date }
+>
+```
+
+**Database table**
+
+```text
+rate_limit_windows(
+  action text not null check(action in ('refresh','download','share')),
+  context_key text not null,
+  window_start integer not null,
+  count integer not null check(count >= 0),
+  created_at integer not null,
+  updated_at integer not null,
+  primary key(action, context_key, window_start)
+)
+```
+
+Required index:
+
+- `rate_limit_windows_cleanup_idx(window_start)` for bounded cleanup paths.
+
+**Refresh API limit response**
+
+```typescript
+type ReadyCardLimitErrorResponse = {
+  error: "ready_card_limited"
+  message: string
+}
+```
+
+**Placeholder action API**
+
+- `POST /api/card-action`
+- Request: `{ action: "download" | "share" }`
+- Allowed response: `{ action, status: "allowed", message: string }`
+- Limited response: HTTP `429` with `ReadyCardLimitErrorResponse`
+- Invalid action response: HTTP `400` with `{ error: "invalid_card_action", message: string }`
+
+### 3. Contracts
+
+- Limits use `ReadyCardRequestContext.requestContextKey`, which is derived from the anonymous cookie plus normalized IP context. Do not use `visitorKey` for rate limits; recent-card history intentionally remains cookie-only.
+- Persist only hashed `context_key` values. Do not persist raw `juhua_anonymous_id`, raw IP headers, user-agent strings, or full cookie headers in rate-limit rows.
+- `proxy.ts` must match every public API endpoint that depends on anonymous identity, including `/`, `/api/ready-card`, and `/api/card-action`.
+- `GET /api/ready-card` must consume the `refresh` limit before selecting a card or inserting `ready_card_views`.
+- A blocked refresh returns HTTP `429`, safe Chinese copy, and a `Retry-After` header; it must not call ready-card selection and must not insert `ready_card_views`.
+- `POST /api/card-action` is a no-op product endpoint for placeholder `download` and `share` actions until real download/share slices exist. It records/limits the action but must not generate PNG files, invoke Web Share, or claim those capabilities are implemented.
+- Counter updates must run inside `BEGIN IMMEDIATE` on the runtime SQLite connection so same-key concurrent requests cannot over-admit above the configured threshold.
+- Route handlers must parse request/response JSON as `unknown` at boundaries and narrow through shared guards from `lib/cards/public-ready-card.ts`.
+- Public limit copy must not mention thresholds, SQLite, database setup, cookies, IPs, stack traces, model/provider failures, or internal quota rows.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| Refresh count is below `120` for the current one-hour window | Increment the `refresh` row and continue to ready-card selection. |
+| Refresh count has reached `120` | Return `429 { error: "ready_card_limited" }`, set `Retry-After`, and leave `ready_card_views` unchanged. |
+| Download/share count is below `60` | Increment the matching action row and return a truthful placeholder `allowed` response. |
+| Download/share count has reached `60` | Return `429 { error: "ready_card_limited" }` with calm copy. |
+| Same context reaches the next fixed hourly window | Create/consume a new window row and allow the action again. |
+| Request body to `/api/card-action` is missing, malformed JSON, or an unsupported action | Return `400 { error: "invalid_card_action" }` with safe copy and do not consume any quota. |
+| Anonymous cookie is missing/invalid on a matched route | Proxy mints and forwards a valid anonymous cookie before the route computes `requestContextKey`. |
+| IP changes for the same cookie | Rate-limit identity changes because `requestContextKey` includes IP context; recent-card `visitorKey` history remains stable. |
+| Two clients consume the same action/context/window concurrently near the threshold | Immediate transaction serialization allows at most the configured number of successful consumes. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a visitor can refresh up to the hourly exploration limit, then receives calm limit copy while the current 图文卡片 remains visible.
+- Good: blocked refresh requests do not add `ready_card_views`, so rate-limit failures do not poison recent-card avoidance.
+- Good: download/share placeholder button clicks call `/api/card-action`, are counted separately, and still say the real PNG/share capabilities are future slices.
+- Good: rate-limit rows contain action names, hashed context keys, window starts, and counts only.
+- Base: an invalid `/api/card-action` body returns a safe `400` without consuming quota.
+- Bad: using raw IP-only keys; shared networks would collide and the issue's Cookie-plus-IP requirement would be unmet.
+- Bad: applying the refresh limit after `getNextReadyCardForVisitor(...)`; blocked requests would still consume card history.
+- Bad: leaving download/share as pure client announcements after this slice; server-side download/share limit acceptance would be unverifiable.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- `checkAndConsumeRateLimit(...)` allows below-threshold actions, blocks at threshold, and resets in the next fixed hourly window for `refresh`, `download`, and `share`.
+- Rate-limit rows persist hashed context keys and never raw cookie/IP values.
+- Multi-connection or concurrent same-key consumption does not exceed the configured threshold.
+- `GET /api/ready-card` returns `429 ready_card_limited` at the refresh threshold and does not insert `ready_card_views` when blocked.
+- `POST /api/card-action` allows, blocks, resets, and safely rejects invalid action bodies.
+- Browser-visible refresh limit keeps the current 图文卡片 and announces calm copy.
+- Browser-visible download/share allowed states keep truthful placeholder copy, and blocked states show calm limit copy.
+- `pnpm test:rate-limit`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Too late: selecting the card already records ready_card_views.
+const card = await getNextReadyCardForVisitor(client, context)
+const limit = await checkAndConsumeRateLimit({
+  client,
+  action: "refresh",
+  contextKey: context.requestContextKey,
+})
+if (!limit.allowed) return limitedResponse()
+return NextResponse.json({ card })
+```
+
+```typescript
+// Leaks raw request facts and does not use the accepted anonymous context.
+const contextKey = headersList.get("x-forwarded-for") ?? "unknown"
+```
+
+#### Correct
+
+```typescript
+const context = createReadyCardRequestContext({ cookiesList, headersList })
+const limit = await checkAndConsumeRateLimit({
+  client,
+  action: "refresh",
+  contextKey: context.requestContextKey,
+})
+
+if (!limit.allowed) {
+  return NextResponse.json(
+    { error: "ready_card_limited", message: publicLimitMessage },
+    { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } }
+  )
+}
+
+const card = await getNextReadyCardForVisitor(client, context)
 ```
 
 ---
