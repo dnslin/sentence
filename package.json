@@ -19,6 +19,7 @@
     "db:setup": "pnpm db:migrate && pnpm db:seed",
     "test:e2e": "playwright test",
     "test:e2e:reset-db": "tsx scripts/reset-e2e-database.ts",
+    "test:rate-limit": "node --import tsx --test node-tests/rate-limit.test.ts",
     "test:hitokoto": "node --import tsx --test node-tests/hitokoto-pipeline.test.ts",
     "test:xai": "node --import tsx --test node-tests/xai-generation-pipeline.test.ts",
     "test:worker": "node --import tsx --test node-tests/ready-pool-worker.test.ts",

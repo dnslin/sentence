@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  primaryKey,
   sqliteTable,
   text,
   uniqueIndex,
@@ -92,6 +93,29 @@ export const readyCardViews = sqliteTable(
   ]
 )
 
+export const rateLimitWindows = sqliteTable(
+  "rate_limit_windows",
+  {
+    action: text("action").notNull(),
+    contextKey: text("context_key").notNull(),
+    windowStart: integer("window_start", { mode: "timestamp_ms" }).notNull(),
+    count: integer("count").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [
+    check(
+      "rate_limit_windows_action_check",
+      sql`${table.action} in ('refresh', 'download', 'share')`
+    ),
+    check("rate_limit_windows_count_check", sql`${table.count} >= 0`),
+    primaryKey({
+      columns: [table.action, table.contextKey, table.windowStart],
+    }),
+    index("rate_limit_windows_cleanup_idx").on(table.windowStart),
+  ]
+)
+
 export const readyPoolGenerationDays = sqliteTable(
   "ready_pool_generation_days",
   {
@@ -154,6 +178,7 @@ export type CardRow = typeof cards.$inferSelect
 export type GenerationAttemptRow = typeof generationAttempts.$inferSelect
 export type HitokotoSentenceMetadataRow =
   typeof hitokotoSentenceMetadata.$inferSelect
+export type RateLimitWindowRow = typeof rateLimitWindows.$inferSelect
 export type ReadyCardViewRow = typeof readyCardViews.$inferSelect
 export type ReadyPoolGenerationDayRow =
   typeof readyPoolGenerationDays.$inferSelect

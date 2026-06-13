@@ -12,7 +12,8 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "pnpm test:e2e:reset-db && pnpm db:setup && pnpm build && next start --hostname 127.0.0.1 --port 3100",
+    command:
+      "pnpm run test:e2e:reset-db && pnpm run db:setup && pnpm run build && next start --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
     env: {
