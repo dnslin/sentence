@@ -144,7 +144,7 @@ async function pruneVisitorViews(client: DatabaseClient, visitorKey: string) {
   )
 }
 
-async function getNextReadyCardForVisitorInTransaction(
+export async function getNextReadyCardForVisitorInTransaction(
   client: DatabaseClient,
   context: ReadyCardRequestContext
 ) {

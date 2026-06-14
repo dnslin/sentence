@@ -19,9 +19,10 @@ function buildCookieHeader(
         cookie.length > 0 && !cookie.startsWith(`${anonymousCookieName}=`)
     )
 
-  return [...(existingCookies ?? []), `${anonymousCookieName}=${anonymousId}`].join(
-    "; "
-  )
+  return [
+    ...(existingCookies ?? []),
+    `${anonymousCookieName}=${anonymousId}`,
+  ].join("; ")
 }
 
 function shouldUseSecureCookie(request: NextRequest) {
@@ -62,5 +63,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/api/ready-card"],
+  matcher: ["/", "/api/ready-card", "/api/card-action"],
 }

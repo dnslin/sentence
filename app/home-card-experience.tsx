@@ -4,8 +4,11 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
+  isCardActionResponse,
   isReadyCardErrorResponse,
+  isReadyCardLimitErrorResponse,
   isReadyCardResponse,
+  type CardActionName,
   type PublicReadyCard,
 } from "@/lib/cards/public-ready-card"
 
@@ -16,27 +19,15 @@ const refreshEmptyStockAnnouncement =
 const refreshFailureAnnouncement =
   "刷新生成暂时没有成功，当前图文卡片已保留。请稍后再试。"
 const refreshLimitAnnouncement =
-  "今天的刷新有点频繁了，先让这张图文卡片停留一会儿。"
-
-type RefreshLimitResponse = {
-  error: "ready_card_limited"
-  message: string
-}
+  "刷新生成有点频繁了，先让当前图文卡片停留一会儿。"
+const cardActionFailureAnnouncement =
+  "这个操作暂时没有成功，当前图文卡片已保留。请稍后再试。"
+const cardActionLimitAnnouncement =
+  "这个操作有点频繁了，先让当前图文卡片停留一会儿。"
 
 type Announcement = {
   text: string
   sequence: number
-}
-
-function isRefreshLimitResponse(value: unknown): value is RefreshLimitResponse {
-  if (typeof value !== "object" || value === null) return false
-
-  const response = value as Record<string, unknown>
-
-  return (
-    response.error === "ready_card_limited" &&
-    typeof response.message === "string"
-  )
 }
 
 function assertNever(value: never): never {
@@ -53,14 +44,22 @@ function getRefreshErrorAnnouncement(body: unknown) {
     }
   }
 
-  if (isRefreshLimitResponse(body)) return refreshLimitAnnouncement
+  if (isReadyCardLimitErrorResponse(body)) return refreshLimitAnnouncement
 
   return refreshFailureAnnouncement
+}
+
+function getCardActionErrorAnnouncement(body: unknown) {
+  if (isReadyCardLimitErrorResponse(body)) return cardActionLimitAnnouncement
+
+  return cardActionFailureAnnouncement
 }
 
 export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
   const [currentCard, setCurrentCard] = useState(card)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [pendingCardAction, setPendingCardAction] =
+    useState<CardActionName | null>(null)
   const [announcement, setAnnouncement] = useState<Announcement>({
     text: "",
     sequence: 0,
@@ -97,6 +96,35 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
     }
   }
 
+  async function runCardAction(action: CardActionName) {
+    if (pendingCardAction) return
+
+    setPendingCardAction(action)
+
+    try {
+      const response = await fetch("/api/card-action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      })
+      const body: unknown = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        announce(getCardActionErrorAnnouncement(body))
+        return
+      }
+
+      if (!isCardActionResponse(body))
+        throw new Error("invalid action response")
+
+      announce(body.message)
+    } catch {
+      announce(cardActionFailureAnnouncement)
+    } finally {
+      setPendingCardAction(null)
+    }
+  }
+
   return (
     <>
       <QuietGalleryCard
@@ -124,24 +152,20 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            onClick={() =>
-              announce(
-                "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。"
-              )
-            }
+            disabled={pendingCardAction !== null}
+            onClick={() => void runCardAction("download")}
           >
-            下载 PNG
+            {pendingCardAction === "download" ? "下载确认中" : "下载 PNG"}
           </Button>
           <Button
             type="button"
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            onClick={() =>
-              announce("分享能力会在后续切片接入；现在没有调用系统分享。")
-            }
+            disabled={pendingCardAction !== null}
+            onClick={() => void runCardAction("share")}
           >
-            分享
+            {pendingCardAction === "share" ? "分享确认中" : "分享"}
           </Button>
         </div>
         <p
