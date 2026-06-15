@@ -8,6 +8,7 @@ import { exportReadyCardToPng } from "@/lib/card-export/png"
 import {
   canShareReadyCardFile,
   createReadyCardSharePayload,
+  isShareCancellation,
   shareReadyCardFile,
 } from "@/lib/card-export/share"
 import {
@@ -41,6 +42,7 @@ const shareFallbackDownloadAnnouncement =
   "当前浏览器不支持直接分享文件，PNG 会开始下载。"
 const shareFailureAnnouncement =
   "分享暂时没有完成，当前图文卡片已保留。请稍后再试。"
+const shareCancelledAnnouncement = "已取消分享，当前图文卡片已保留。"
 
 type Announcement = {
   text: string
@@ -160,7 +162,18 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
         return
       }
 
-      await shareReadyCardFile(sharePayload)
+      try {
+        await shareReadyCardFile(sharePayload)
+      } catch (error) {
+        // A user dismissing the share sheet (AbortError) is a calm cancel, not
+        // a failure; do not fall back to download and do not suggest a retry.
+        if (isShareCancellation(error)) {
+          announce(shareCancelledAnnouncement)
+          return
+        }
+        throw error
+      }
+
       announce(shareSuccessAnnouncement)
     } catch {
       announce(

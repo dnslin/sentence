@@ -722,9 +722,9 @@ const sharePayload = createReadyCardSharePayload(exportedCard)
 - Share must use the same `ReadyCardPngExport` produced by the DOM-to-PNG download flow. Do not build a parallel share artifact or share a URL in place of the current card PNG.
 - Share must run only after `POST /api/card-action` returns a valid allowed response echoing `action: "share"`.
 - The shared `File` must be built from the exported PNG `Blob`, use the exported filename, and use MIME type `image/png`.
-- Web Share file support requires both `navigator.share` and `navigator.canShare`; check `navigator.canShare({ files: [file] })` with the actual PNG `File` before invoking `navigator.share`.
-- If file sharing is unavailable before invoking `navigator.share`, fall back to `downloadBlob(exported.blob, exported.fileName)` and announce that PNG download is starting.
-- If `navigator.share` rejects after invocation, preserve the current 图文卡片 and show non-technical failure feedback; do not automatically download because the share sheet may have been canceled by the user.
+- Web Share file support requires both `navigator.share` and `navigator.canShare`. The capability probe must call `navigator.canShare` with the SAME `ShareData` that `navigator.share` will receive (the combined `{ files, title, text }` payload), built from one shared helper so the probe and the real call cannot drift. Probing only `{ files }` can pass on browsers that later reject the combined payload.
+- If file sharing is unavailable before invoking `navigator.share` (missing `navigator.share`/`navigator.canShare`, `canShare` throws, or `canShare` returns false for the combined payload), fall back to `downloadBlob(exported.blob, exported.fileName)` and announce that PNG download is starting.
+- If `navigator.share` rejects after invocation, distinguish user cancellation from real failure. An `AbortError` (the user dismissed the native share sheet) maps to calm non-retry copy and must not download. Any other rejection (including `NotAllowedError`) maps to non-technical retry-oriented failure copy. Neither case automatically downloads, because the share sheet may already have opened.
 - Share metadata must use truthful generic product language for one current 图文卡片; it must not imply accounts, saved history, galleries, posting, or named living-artist style.
 - Production code must not expose test-only globals or callbacks. Browser tests should install Web Share/download observation seams with Playwright `addInitScript`.
 
@@ -732,32 +732,36 @@ const sharePayload = createReadyCardSharePayload(exportedCard)
 
 | Condition                                                                                                          | Required behavior                                                                                     |
 | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Valid allowed `share` response and supported Web Share files                                                       | Export the current card, call `navigator.share` with one PNG `File`, and do not download.             |
-| Missing `navigator.share`, missing `navigator.canShare`, `canShare` throws, or `canShare({ files })` returns false | Export the current card, trigger PNG download, and announce fallback copy.                            |
+| Valid allowed `share` response and supported Web Share files (probe of the combined `{ files, title, text }` passes)| Export the current card, call `navigator.share` with one PNG `File`, and do not download.             |
+| Missing `navigator.share`/`navigator.canShare`, `canShare` throws, or `canShare` returns false for the combined payload | Export the current card, trigger PNG download, do not call `navigator.share`, and announce fallback copy. |
 | Current card was refreshed before share                                                                            | Shared/downloaded filename and pixels come from the refreshed card, not initial seed data.            |
 | Card-action response is blocked, invalid, or echoes the wrong action                                               | Do not export, call Web Share, or download; show limit/failure copy.                                  |
 | Export fails before capability branch                                                                              | Keep current card visible, re-enable controls, and show share failure copy.                           |
-| `navigator.share` rejects after invocation                                                                         | Keep current card visible, re-enable controls, show share failure copy, and do not fallback download. |
+| `navigator.share` rejects with `AbortError` (user cancelled the share sheet)                                       | Keep current card visible, re-enable controls, show calm non-retry copy, and do not download.         |
+| `navigator.share` rejects with any other error (e.g. `NotAllowedError`)                                            | Keep current card visible, re-enable controls, show non-technical retry copy, and do not download.    |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: a supported browser receives a PNG `File` named like the download artifact, with exact `1080 × 1350` dimensions.
 - Good: an unsupported browser still receives the same PNG through the existing download helper.
 - Good: tests decode the shared/downloaded Blob in the browser to verify dimensions without adding production test hooks.
-- Base: user cancels a native share sheet; the current card stays visible and the UI reports that sharing did not complete.
-- Bad: checking only `navigator.share` and passing `files` without `navigator.canShare({ files })`.
+- Base: user cancels a native share sheet (`AbortError`); the current card stays visible, no download fires, and the UI shows calm non-retry copy.
+- Bad: probing `navigator.canShare({ files })` only, then calling `navigator.share({ files, title, text })`; a browser that rejects the combined payload would skip the fallback and fail at share time.
 - Bad: treating every `navigator.share` rejection as unsupported capability and starting an unwanted download.
+- Bad: mapping an `AbortError` cancellation to retry-oriented failure copy that tells the user to try again.
 - Bad: sharing a page URL while the issue requires the current generated PNG artifact.
 
 ### 6. Tests Required
 
 For Web Share file work, use browser-visible tests that assert:
 
-- Supported Web Share file capability calls `navigator.share` with one PNG `File` generated from the current card and triggers no download.
-- Unsupported file-sharing capability falls back to a PNG download whose dimensions match `READY_CARD_EXPORT_WIDTH × READY_CARD_EXPORT_HEIGHT`.
+- Supported Web Share file capability calls `navigator.share` with one PNG `File` generated from the current card and triggers no download. The supported stub's `canShare` must validate the full combined payload (files plus string title and text), mirroring a real browser, so it cannot pass when production probes only `{ files }`.
+- Unsupported file-sharing capability falls back to a PNG download whose dimensions match `READY_CARD_EXPORT_WIDTH × READY_CARD_EXPORT_HEIGHT`. Cover each unsupported branch: combined-payload rejection (files-only true, combined false), missing `navigator.share`/`navigator.canShare`, and a throwing `canShare`. Each asserts the fallback download and that `navigator.share` was never invoked.
 - Sharing after refresh uses the refreshed current card.
 - A blocked or invalid card-action response prevents Web Share and fallback download.
-- A Web Share rejection after invocation does not auto-download and keeps the current card visible.
+- A user cancellation (`navigator.share` rejects with `AbortError`) shows calm non-retry copy, keeps the current card, and does not download; `navigator.share` was invoked once.
+- A non-cancellation rejection (e.g. `NotAllowedError`) shows retry-oriented failure copy, keeps the current card, and does not auto-download.
+- Negative no-download assertions should be deterministic where feasible: assert the success/limit/failure announcement first, then assert an injected `window.__lastDownloadUrl` is undefined, rather than relying solely on a fixed `waitForEvent('download')` timeout.
 - `pnpm test:e2e -- --grep "share|download"`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
 
 ---
