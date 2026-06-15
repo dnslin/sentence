@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic"
 
 const actionMessages = {
   download: "PNG 可以开始准备；浏览器会下载当前这张图文卡片。",
-  share: "分享能力会在后续切片接入；现在没有调用系统分享。",
+  share: "分享可以开始准备；浏览器会分享或下载当前这张图文卡片。",
 } as const satisfies Record<CardActionName, string>
 
 export async function POST(request: Request) {

@@ -52,7 +52,7 @@ const seedCard = {
 
 const expectedCardActionMessages = {
   download: "PNG 可以开始准备；浏览器会下载当前这张图文卡片。",
-  share: "分享能力会在后续切片接入；现在没有调用系统分享。",
+  share: "分享可以开始准备；浏览器会分享或下载当前这张图文卡片。",
 } as const
 
 async function withE2eDatabase<T>(
@@ -695,9 +695,8 @@ async function installDownloadInspection(page: Page) {
 async function getRevokedDownloadUrls(page: Page) {
   return page.evaluate(
     () =>
-      (
-        window as typeof window & { __revokedDownloadUrls?: string[] }
-      ).__revokedDownloadUrls ?? []
+      (window as typeof window & { __revokedDownloadUrls?: string[] })
+        .__revokedDownloadUrls ?? []
   )
 }
 
@@ -871,13 +870,18 @@ test("downloaded PNG keeps the visible quiet-gallery card style", async ({
     .screenshot()
 
   await downloadCurrentCard(page)
-  const comparison = await compareDownloadedPngToVisibleCard(page, visibleCardPng)
+  const comparison = await compareDownloadedPngToVisibleCard(
+    page,
+    visibleCardPng
+  )
 
   expect(comparison.p90Distance).toBeLessThanOrEqual(45)
   expect(comparison.averageDistance).toBeLessThanOrEqual(20)
 })
 
-test("downloads a card with a same-origin WebP illustration", async ({ page }) => {
+test("downloads a card with a same-origin WebP illustration", async ({
+  page,
+}) => {
   const imageRequests: string[] = []
 
   await clearReadyCards()
@@ -885,7 +889,8 @@ test("downloads a card with a same-origin WebP illustration", async ({ page }) =
   await installDownloadInspection(page)
   page.on("request", (request) => {
     const url = new URL(request.url())
-    if (url.pathname === generatedIllustrationUrl) imageRequests.push(url.pathname)
+    if (url.pathname === generatedIllustrationUrl)
+      imageRequests.push(url.pathname)
   })
 
   await page.goto("/")
@@ -1044,11 +1049,124 @@ test("download export failure keeps current card and re-enables controls", async
   await expect(page.getByText(initialSentence ?? "")).toBeVisible()
 })
 
-test("share remains a truthful placeholder and does not trigger PNG export", async ({
+async function installSupportedWebShareInspection(page: Page) {
+  await page.addInitScript(() => {
+    type SharedFileInspection = {
+      name: string
+      type: string
+      size: number
+      width: number
+      height: number
+    }
+    type WebShareInspectionWindow = typeof window & {
+      __sharePayloads?: Array<{
+        title?: string
+        text?: string
+        files: SharedFileInspection[]
+      }>
+    }
+
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: (data?: ShareData) =>
+        Array.isArray(data?.files) && data.files.length === 1,
+    })
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data?: ShareData) => {
+        const files = Array.isArray(data?.files) ? data.files : []
+        const inspectedFiles = await Promise.all(
+          files.map(async (file) => {
+            const bitmap = await createImageBitmap(file)
+            const inspection: SharedFileInspection = {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              width: bitmap.width,
+              height: bitmap.height,
+            }
+            bitmap.close()
+            return inspection
+          })
+        )
+
+        ;((window as WebShareInspectionWindow).__sharePayloads ??= []).push({
+          title: data?.title,
+          text: data?.text,
+          files: inspectedFiles,
+        })
+      },
+    })
+  })
+}
+
+async function getSharePayloads(page: Page) {
+  return page.evaluate(
+    () =>
+      (window as typeof window & { __sharePayloads?: unknown[] })
+        .__sharePayloads ?? []
+  )
+}
+
+async function installUnsupportedWebShareInspection(page: Page) {
+  await page.addInitScript(() => {
+    type WebShareUnsupportedWindow = typeof window & {
+      __shareAttemptCount?: number
+    }
+
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => false,
+    })
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async () => {
+        const inspectionWindow = window as WebShareUnsupportedWindow
+        inspectionWindow.__shareAttemptCount =
+          (inspectionWindow.__shareAttemptCount ?? 0) + 1
+        throw new Error("test Web Share should not be called")
+      },
+    })
+  })
+}
+
+async function getShareAttemptCount(page: Page) {
+  return page.evaluate(
+    () =>
+      (window as typeof window & { __shareAttemptCount?: number })
+        .__shareAttemptCount ?? 0
+  )
+}
+
+async function installRejectingWebShareInspection(page: Page) {
+  await page.addInitScript(() => {
+    type WebShareRejectingWindow = typeof window & {
+      __shareAttemptCount?: number
+    }
+
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: (data?: ShareData) =>
+        Array.isArray(data?.files) && data.files.length === 1,
+    })
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async () => {
+        const inspectionWindow = window as WebShareRejectingWindow
+        inspectionWindow.__shareAttemptCount =
+          (inspectionWindow.__shareAttemptCount ?? 0) + 1
+        throw new DOMException("Share canceled by test", "AbortError")
+      },
+    })
+  })
+}
+
+test("shares the current card as a PNG file when Web Share file capability is supported", async ({
   page,
 }) => {
   const actions: string[] = []
 
+  await installSupportedWebShareInspection(page)
   await page.route("**/api/card-action", async (route) => {
     const body: unknown = route.request().postDataJSON()
     const action = isCardActionRequest(body) ? body.action : "missing"
@@ -1059,7 +1177,7 @@ test("share remains a truthful placeholder and does not trigger PNG export", asy
       body: JSON.stringify({
         action,
         status: "allowed",
-        message: "分享能力会在后续切片接入；现在没有调用系统分享。",
+        message: "allowed",
       }),
     })
   })
@@ -1068,10 +1186,30 @@ test("share remains a truthful placeholder and does not trigger PNG export", asy
   const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
   await page.getByRole("button", { name: "分享" }).click()
   await expect(
-    page.getByText("分享能力会在后续切片接入；现在没有调用系统分享。")
+    page.getByText("已打开系统分享，图文卡片 PNG 已交给浏览器处理。")
   ).toBeVisible()
   await expect(unexpectedDownload).rejects.toThrow()
+
+  const sharePayloads = await getSharePayloads(page)
   expect(actions).toEqual(["share"])
+  expect(sharePayloads).toEqual([
+    {
+      title: "句画图文卡片",
+      text: "分享当前这张随机短句与非署名绘本风插画组成的图文卡片。",
+      files: [
+        {
+          name: expect.stringMatching(/^juhua-\d{4}-\d{2}-\d{2}-.+\.png$/),
+          type: "image/png",
+          size: expect.any(Number),
+          width: READY_CARD_EXPORT_WIDTH,
+          height: READY_CARD_EXPORT_HEIGHT,
+        },
+      ],
+    },
+  ])
+  expect(
+    (sharePayloads[0] as { files?: Array<{ size?: number }> }).files?.[0]?.size
+  ).toBeGreaterThan(0)
 })
 
 test("disables both action buttons while download export is pending", async ({
@@ -1107,9 +1245,164 @@ test("disables both action buttons while download export is pending", async ({
   await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
 
-test("share limit response shows calm placeholder feedback", async ({
+test("shares the refreshed current card instead of stale seed data", async ({
   page,
 }) => {
+  const actions: string[] = []
+
+  await installSupportedWebShareInspection(page)
+  await page.route("**/api/card-action", async (route) => {
+    const body: unknown = route.request().postDataJSON()
+    const action = isCardActionRequest(body) ? body.action : "missing"
+    actions.push(action)
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action,
+        status: "allowed",
+        message: "allowed",
+      }),
+    })
+  })
+  await page.route("**/api/ready-card", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        card: {
+          id: "test-refreshed-share-card",
+          sentence: "新的风把纸页轻轻翻亮。",
+          sceneLabel: "测试刷新后的插画场景",
+          accent: "rain",
+          status: "ready",
+          illustrationUrl: null,
+        },
+      }),
+    })
+  })
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "再来一张" }).click()
+  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
+  await expect(page.getByText("“新的风把纸页轻轻翻亮。”")).toBeVisible()
+
+  await page.getByRole("button", { name: "分享" }).click()
+  await expect(
+    page.getByText("已打开系统分享，图文卡片 PNG 已交给浏览器处理。")
+  ).toBeVisible()
+
+  const sharePayloads = await getSharePayloads(page)
+  expect(actions).toEqual(["share"])
+  expect(
+    (sharePayloads[0] as { files?: Array<{ name?: string }> }).files?.[0]?.name
+  ).toContain("test-refreshed-share-card")
+})
+
+test("falls back to downloading the current PNG when Web Share file capability is unsupported", async ({
+  page,
+}) => {
+  const actions: string[] = []
+
+  await installDownloadInspection(page)
+  await installUnsupportedWebShareInspection(page)
+  await page.route("**/api/card-action", async (route) => {
+    const body: unknown = route.request().postDataJSON()
+    const action = isCardActionRequest(body) ? body.action : "missing"
+    actions.push(action)
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action,
+        status: "allowed",
+        message: "allowed",
+      }),
+    })
+  })
+
+  await page.goto("/")
+  const downloadPromise = page.waitForEvent("download")
+  await page.getByRole("button", { name: "分享" }).click()
+  const download = await downloadPromise
+
+  await expect(
+    page.getByText("当前浏览器不支持直接分享文件，PNG 会开始下载。")
+  ).toBeVisible()
+  expect(download.suggestedFilename()).toMatch(
+    /^juhua-\d{4}-\d{2}-\d{2}-.+\.png$/
+  )
+  const png = await inspectDownloadedPng(page)
+  expect(png.width).toBe(READY_CARD_EXPORT_WIDTH)
+  expect(png.height).toBe(READY_CARD_EXPORT_HEIGHT)
+  expect(actions).toEqual(["share"])
+  expect(await getShareAttemptCount(page)).toBe(0)
+})
+
+test("invalid share action success payload blocks Web Share and download fallback", async ({
+  page,
+}) => {
+  await installSupportedWebShareInspection(page)
+  await page.route("**/api/card-action", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action: "download",
+        status: "allowed",
+        message: "wrong action",
+      }),
+    })
+  })
+
+  await page.goto("/")
+  const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
+  await page.getByRole("button", { name: "分享" }).click()
+  await expect(
+    page.getByText("分享暂时没有完成，当前图文卡片已保留。请稍后再试。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
+  await expect(unexpectedDownload).rejects.toThrow()
+  expect(await getSharePayloads(page)).toEqual([])
+})
+
+test("Web Share rejection keeps the current card and does not auto-download", async ({
+  page,
+}) => {
+  await installRejectingWebShareInspection(page)
+  await page.route("**/api/card-action", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action: "share",
+        status: "allowed",
+        message: "allowed",
+      }),
+    })
+  })
+
+  await page.goto("/")
+  const initialSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+  const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
+
+  await page.getByRole("button", { name: "分享" }).click()
+  await expect(
+    page.getByText("分享暂时没有完成，当前图文卡片已保留。请稍后再试。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
+  await expect(page.getByText(initialSentence ?? "")).toBeVisible()
+  await expect(unexpectedDownload).rejects.toThrow()
+  expect(await getShareAttemptCount(page)).toBe(1)
+})
+
+test("share limit response blocks Web Share and download fallback", async ({
+  page,
+}) => {
+  await installSupportedWebShareInspection(page)
   await page.route("**/api/card-action", async (route) => {
     await route.fulfill({
       status: 429,
@@ -1122,11 +1415,14 @@ test("share limit response shows calm placeholder feedback", async ({
   })
 
   await page.goto("/")
+  const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
   await page.getByRole("button", { name: "分享" }).click()
   await expect(
     page.getByText("这个操作有点频繁了，先让当前图文卡片停留一会儿。")
   ).toBeVisible()
   await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
+  await expect(unexpectedDownload).rejects.toThrow()
+  expect(await getSharePayloads(page)).toEqual([])
 })
 
 test("keeps seeding idempotent for a fresh public ready-card visitor", async ({
