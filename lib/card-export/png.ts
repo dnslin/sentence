@@ -2,8 +2,10 @@ import { toBlob } from "html-to-image"
 
 import type { PublicReadyCard } from "@/lib/cards/public-ready-card"
 
-export const READY_CARD_EXPORT_WIDTH = 1080
-export const READY_CARD_EXPORT_HEIGHT = 1350
+import {
+  READY_CARD_EXPORT_HEIGHT,
+  READY_CARD_EXPORT_WIDTH,
+} from "./constants"
 
 export type ReadyCardPngExport = {
   blob: Blob
@@ -29,6 +31,7 @@ export async function exportReadyCardToPng(
   options: ReadyCardExportOptions = {}
 ): Promise<ReadyCardPngExport> {
   await document.fonts?.ready.catch(() => undefined)
+  await waitForCardImages(cardNode)
 
   const blob = await toBlob(cardNode, {
     backgroundColor: "#ffffff",
@@ -47,6 +50,27 @@ export async function exportReadyCardToPng(
     width: READY_CARD_EXPORT_WIDTH,
     height: READY_CARD_EXPORT_HEIGHT,
   }
+}
+
+function waitForCardImages(cardNode: HTMLElement) {
+  const images = Array.from(cardNode.querySelectorAll("img"))
+
+  return Promise.all(images.map(waitForImage)).then(() => undefined)
+}
+
+async function waitForImage(image: HTMLImageElement) {
+  if (!image.complete) {
+    await new Promise<void>((resolve, reject) => {
+      image.addEventListener("load", () => resolve(), { once: true })
+      image.addEventListener("error", () => reject(), { once: true })
+    })
+  }
+
+  if (image.naturalWidth === 0) {
+    throw new ReadyCardExportError("Card image failed to load")
+  }
+
+  await image.decode().catch(() => undefined)
 }
 
 function buildReadyCardFileName(card: PublicReadyCard, now: Date) {

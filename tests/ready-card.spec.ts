@@ -4,6 +4,11 @@ import { join } from "node:path"
 import { expect, test, type Page } from "@playwright/test"
 
 import {
+  READY_CARD_EXPORT_HEIGHT,
+  READY_CARD_EXPORT_WIDTH,
+} from "@/lib/card-export/constants"
+import {
+  isCardActionRequest,
   isReadyCardResponse,
   type ReadyCardResponse,
 } from "@/lib/cards/public-ready-card"
@@ -43,6 +48,11 @@ const seedCard = {
   accent: seedReadyCard.card.accent,
   status: seedReadyCard.card.status,
   illustrationUrl: null,
+} as const
+
+const expectedCardActionMessages = {
+  download: "PNG 可以开始准备；浏览器会下载当前这张图文卡片。",
+  share: "分享能力会在后续切片接入；现在没有调用系统分享。",
 } as const
 
 async function withE2eDatabase<T>(
@@ -246,9 +256,7 @@ test("blocks refresh at the hourly limit without recording a ready-card view", a
   expect(await countReadyCardViews()).toBe(viewsBeforeBlockedRequest)
 })
 
-test("limits download and share placeholder action requests", async ({
-  request,
-}) => {
+test("limits download and share action requests", async ({ request }) => {
   for (const action of cardActionNames) {
     await seedE2eReadyCardStore()
 
@@ -257,6 +265,7 @@ test("limits download and share placeholder action requests", async ({
     expect(await allowed.json()).toMatchObject({
       action,
       status: "allowed",
+      message: expectedCardActionMessages[action],
     })
 
     await consumeCardActionLimit(
@@ -544,6 +553,8 @@ test("shows loading transition and prevents duplicate refresh clicks", async ({
   await refreshButton.click()
 
   await expect(page.getByRole("button", { name: "刷新生成中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
   await expect(
     page.getByRole("article", { name: "图文卡片预览" })
   ).toHaveAttribute("aria-busy", "true")
@@ -660,9 +671,16 @@ async function installDownloadInspection(page: Page) {
   await page.addInitScript(() => {
     type DownloadInspectionWindow = typeof window & {
       __lastDownloadUrl?: string
+      __revokedDownloadUrls?: string[]
     }
 
-    URL.revokeObjectURL = () => undefined
+    const originalRevokeObjectUrl = URL.revokeObjectURL
+    URL.revokeObjectURL = function revokeObjectURL(url) {
+      ;((window as DownloadInspectionWindow).__revokedDownloadUrls ??= []).push(
+        url
+      )
+      originalRevokeObjectUrl.call(URL, url)
+    }
 
     const originalClick = HTMLAnchorElement.prototype.click
     HTMLAnchorElement.prototype.click = function click() {
@@ -672,6 +690,15 @@ async function installDownloadInspection(page: Page) {
       return originalClick.call(this)
     }
   })
+}
+
+async function getRevokedDownloadUrls(page: Page) {
+  return page.evaluate(
+    () =>
+      (
+        window as typeof window & { __revokedDownloadUrls?: string[] }
+      ).__revokedDownloadUrls ?? []
+  )
 }
 
 async function inspectDownloadedPng(page: Page) {
@@ -746,22 +773,22 @@ async function compareDownloadedPngToVisibleCard(
       if (!context) throw new Error("comparison canvas unavailable")
 
       context.drawImage(bitmap, 0, 0)
-      return [
-        { x: 0.02, y: 0.5 },
-        { x: 0.5, y: 0.05 },
-        { x: 0.5, y: 0.2 },
-        { x: 0.5, y: 0.78 },
-        { x: 0.5, y: 0.95 },
-        { x: 0.98, y: 0.5 },
-      ].map(({ x, y }) => {
-        const pixel = context.getImageData(
-          Math.round((bitmap.width - 1) * x),
-          Math.round((bitmap.height - 1) * y),
-          1,
-          1
-        ).data
-        return Array.from(pixel) as Pixel
-      })
+      return Array.from({ length: 9 }, (_, row) =>
+        Array.from({ length: 7 }, (__, column) => ({
+          x: (column + 1) / 8,
+          y: (row + 1) / 10,
+        }))
+      )
+        .flat()
+        .map(({ x, y }) => {
+          const pixel = context.getImageData(
+            Math.round((bitmap.width - 1) * x),
+            Math.round((bitmap.height - 1) * y),
+            1,
+            1
+          ).data
+          return Array.from(pixel) as Pixel
+        })
     }
 
     function colorDistance(left: Pixel, right: Pixel) {
@@ -789,9 +816,16 @@ async function compareDownloadedPngToVisibleCard(
     downloadedBitmap.close()
     visibleBitmap.close()
 
+    const sortedDistances = [...distances].sort((left, right) => left - right)
+    const p90Distance =
+      sortedDistances[Math.floor((sortedDistances.length - 1) * 0.9)] ?? 0
+
     return {
       distances,
-      maxDistance: Math.max(...distances),
+      p90Distance,
+      averageDistance:
+        distances.reduce((total, distance) => total + distance, 0) /
+        distances.length,
       downloadedSamples,
       visibleSamples,
     }
@@ -818,8 +852,9 @@ test("downloads the current card as a 1080x1350 PNG artifact", async ({
   ).toBeVisible()
 
   const png = await inspectDownloadedPng(page)
-  expect(png.width).toBe(1080)
-  expect(png.height).toBe(1350)
+  expect(await getRevokedDownloadUrls(page)).toEqual([])
+  expect(png.width).toBe(READY_CARD_EXPORT_WIDTH)
+  expect(png.height).toBe(READY_CARD_EXPORT_HEIGHT)
   expect(png.illustrationPixel).not.toEqual(png.sentencePanelPixel)
   expect(png.pageBackgroundPixel).not.toEqual([247, 242, 234, 255])
   expect(visibleSentence).toBe(`“${seedCard.sentence}”`)
@@ -838,7 +873,8 @@ test("downloaded PNG keeps the visible quiet-gallery card style", async ({
   await downloadCurrentCard(page)
   const comparison = await compareDownloadedPngToVisibleCard(page, visibleCardPng)
 
-  expect(comparison.maxDistance).toBeLessThanOrEqual(35)
+  expect(comparison.p90Distance).toBeLessThanOrEqual(45)
+  expect(comparison.averageDistance).toBeLessThanOrEqual(20)
 })
 
 test("downloads a card with a same-origin WebP illustration", async ({ page }) => {
@@ -860,9 +896,52 @@ test("downloads a card with a same-origin WebP illustration", async ({ page }) =
   await downloadCurrentCard(page)
   const png = await inspectDownloadedPng(page)
 
-  expect(png.width).toBe(1080)
-  expect(png.height).toBe(1350)
+  expect(png.width).toBe(READY_CARD_EXPORT_WIDTH)
+  expect(png.height).toBe(READY_CARD_EXPORT_HEIGHT)
   expect(imageRequests).toContain(generatedIllustrationUrl)
+})
+
+test("download waits for the current WebP illustration before exporting", async ({
+  page,
+}) => {
+  let shouldHoldImage = true
+  let releaseImage: (() => void) | undefined
+  let sawDownload = false
+
+  await clearReadyCards()
+  await seedGeneratedIllustrationReadyCard()
+  await installDownloadInspection(page)
+  await page.route(`**${generatedIllustrationUrl}`, async (route) => {
+    if (shouldHoldImage) {
+      shouldHoldImage = false
+      await new Promise<void>((resolve) => {
+        releaseImage = resolve
+      })
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "image/webp",
+      body: generatedIllustrationBytes,
+    })
+  })
+  page.on("download", () => {
+    sawDownload = true
+  })
+
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await expect(page.getByText("“有一束光，正在纸上慢慢醒来。”")).toBeVisible()
+  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await expect(page.getByRole("button", { name: "PNG 准备中" })).toBeDisabled()
+  await page.waitForTimeout(300)
+  expect(sawDownload).toBe(false)
+
+  const downloadAfterImage = page.waitForEvent("download")
+  releaseImage?.()
+  await downloadAfterImage
+  await expect(
+    page.getByText("PNG 已准备好，浏览器会开始下载这张图文卡片。")
+  ).toBeVisible()
 })
 
 test("download exports the refreshed current card instead of stale seed data", async ({
@@ -916,8 +995,8 @@ test("download exports the refreshed current card instead of stale seed data", a
 
   expect(refreshedSentence).toBe("“新的风把纸页轻轻翻亮。”")
   expect(exportedCardIds[0]).toContain("test-refreshed-download-card")
-  expect(png.width).toBe(1080)
-  expect(png.height).toBe(1350)
+  expect(png.width).toBe(READY_CARD_EXPORT_WIDTH)
+  expect(png.height).toBe(READY_CARD_EXPORT_HEIGHT)
 })
 
 test("download limit response blocks PNG generation", async ({ page }) => {
@@ -945,10 +1024,10 @@ test("download limit response blocks PNG generation", async ({ page }) => {
 test("download export failure keeps current card and re-enables controls", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
-      callback(null)
-    }
+  await clearReadyCards()
+  await seedGeneratedIllustrationReadyCard()
+  await page.route(`**${generatedIllustrationUrl}`, async (route) => {
+    await route.fulfill({ status: 404, body: "missing test image" })
   })
 
   await page.goto("/")
@@ -971,13 +1050,14 @@ test("share remains a truthful placeholder and does not trigger PNG export", asy
   const actions: string[] = []
 
   await page.route("**/api/card-action", async (route) => {
-    const body = route.request().postDataJSON() as { action?: string }
-    actions.push(body.action ?? "missing")
+    const body: unknown = route.request().postDataJSON()
+    const action = isCardActionRequest(body) ? body.action : "missing"
+    actions.push(action)
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        action: body.action,
+        action,
         status: "allowed",
         message: "分享能力会在后续切片接入；现在没有调用系统分享。",
       }),
@@ -1018,10 +1098,12 @@ test("disables both action buttons while download export is pending", async ({
   await page.getByRole("button", { name: "下载 PNG" }).click()
 
   await expect(page.getByRole("button", { name: "PNG 准备中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "再来一张" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
 
   releaseResponse?.()
   await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
 

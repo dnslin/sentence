@@ -592,9 +592,11 @@ export function downloadBlob(blob: Blob, fileName: string): void
 - The PNG must include the current sentence and either the same-origin WebP illustration or the CSS fallback illustration for `illustrationUrl: null` because both live inside the captured card DOM.
 - The PNG must exclude page background, buttons, source metadata, watermark, prototype/debug UI, and action announcements by capturing only the card article node, not the page or action wrapper.
 - Same-origin public illustration URLs may be captured by the DOM-to-image library; remote or unsafe URLs must not be introduced as an export strategy.
-- Wait for `document.fonts.ready` when available, but do not add a remote-font dependency for the export path.
+- Wait for `document.fonts.ready` when available, and wait for card `<img>` elements to load/decode before calling DOM-to-image so exported WebP cards do not miss the illustration.
+- Download/share actions and refresh are mutually exclusive while any one of them is pending; do not let refresh mutate the card DOM while export is in flight, and do not export a transient `aria-busy`/refreshing card style.
+- Browser download helpers should delay `URL.revokeObjectURL` long enough for the browser to consume the Blob URL; do not revoke on a zero-delay timer immediately after `anchor.click()`.
 - Export failures must preserve the current 图文卡片, re-enable action buttons, and show non-technical retry copy.
-- Production exporter modules must not expose test-only globals, callbacks, or debug probes. Browser tests should inject observation seams with Playwright `addInitScript` when they need to observe anchor clicks or blob URLs.
+- Production exporter modules must not expose test-only globals, callbacks, or debug probes. Browser tests should inject observation seams with Playwright `addInitScript` when they need to observe anchor clicks or blob URLs, but must not disable production cleanup behavior such as `URL.revokeObjectURL`.
 
 ### 4. Validation & Error Matrix
 
@@ -603,11 +605,13 @@ export function downloadBlob(blob: Blob, fileName: string): void
 | Allowed download action and valid current card node | Generate one PNG download for the current card DOM.                         |
 | Exported PNG is inspected in the browser       | Dimensions are exactly `1080 × 1350`.                                           |
 | Exported PNG is compared with visible card     | Sampled card-style pixels remain close to the visible `QuietGalleryCard`.       |
-| `illustrationUrl` is same-origin public WebP   | The captured card includes the real image from the public image route.          |
+| `illustrationUrl` is same-origin public WebP   | Wait for image load/decode; the captured card includes the real image from the public image route. |
 | `illustrationUrl` is `null`                    | The captured card includes the CSS fallback illustration.                       |
-| Card node is missing or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls.            |
+| Refresh is pending                             | Download/share are disabled; do not export the transient refreshing card style. |
+| Download/share is pending                      | Refresh is disabled; do not mutate the card DOM while export may be reading it. |
+| Card node is missing, card image fails, or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls. |
 | Card-action gate returns `ready_card_limited`  | Do not call the exporter and do not trigger a browser download.                 |
-| Test needs download/blob observability         | Inject test-only monkeypatches from Playwright, not from production modules.    |
+| Test needs download/blob observability         | Inject test-only monkeypatches from Playwright while preserving production cleanup behavior. |
 
 ### 5. Good/Base/Bad Cases
 
@@ -626,11 +630,12 @@ For PNG export work, use browser-visible tests that assert:
 - Clicking `下载 PNG` reaches a Playwright `download` event after a successful card-action gate.
 - The downloaded PNG decodes in the browser and has exact `1080 × 1350` dimensions.
 - The downloaded PNG stays visually aligned with the visible `QuietGalleryCard` style by comparing it to a browser screenshot of the card article.
-- A same-origin WebP illustration card is captured from the public image URL during export.
+- A same-origin WebP illustration card is captured from the public image URL during export, including the case where the image request/decode is still pending when the user clicks download.
 - A refreshed current card is exported instead of stale seed data.
+- Refresh is disabled while download/share is pending, and download/share are disabled while refresh is pending.
 - A `ready_card_limited` card-action response blocks PNG generation and produces no download event.
 - Export failure leaves the current card visible, re-enables controls, and shows retry copy.
-- Tests do not require production-only test globals; observation hooks live in the Playwright page context.
+- Tests do not require production-only test globals; observation hooks live in the Playwright page context and must not bypass production Blob URL cleanup.
 
 ### 7. Wrong vs Correct
 

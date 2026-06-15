@@ -1,3 +1,5 @@
+const blobUrlRevokeDelayMs = 60_000
+
 export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement("a")
@@ -11,5 +13,5 @@ export function downloadBlob(blob: Blob, fileName: string) {
   anchor.click()
   anchor.remove()
 
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  window.setTimeout(() => URL.revokeObjectURL(url), blobUrlRevokeDelayMs)
 }

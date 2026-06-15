@@ -76,8 +76,11 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
     setAnnouncement((current) => ({ text, sequence: current.sequence + 1 }))
   }
 
+  const isCardActionPending = pendingCardAction !== null
+  const isCardBusy = isRefreshing || isCardActionPending
+
   async function refreshCard() {
-    if (isRefreshing) return
+    if (isCardBusy) return
 
     setIsRefreshing(true)
     announce("正在刷新生成新的图文卡片。")
@@ -104,7 +107,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
   }
 
   async function runCardAction(action: CardActionName) {
-    if (pendingCardAction) return
+    if (isCardBusy) return
 
     setPendingCardAction(action)
     announce(action === "download" ? "PNG 准备中。" : "分享确认中。")
@@ -167,7 +170,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             type="button"
             size="lg"
             className="rounded-full px-5"
-            disabled={isRefreshing}
+            disabled={isCardBusy}
             onClick={refreshCard}
           >
             {isRefreshing ? "刷新生成中" : "再来一张"}
@@ -177,7 +180,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            disabled={pendingCardAction !== null}
+            disabled={isCardBusy}
             onClick={() => void runCardAction("download")}
           >
             {pendingCardAction === "download" ? "PNG 准备中" : "下载 PNG"}
@@ -187,7 +190,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             size="lg"
             variant="outline"
             className="rounded-full bg-white/70 px-5"
-            disabled={pendingCardAction !== null}
+            disabled={isCardBusy}
             onClick={() => void runCardAction("share")}
           >
             {pendingCardAction === "share" ? "分享确认中" : "分享"}

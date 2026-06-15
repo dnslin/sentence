@@ -16,7 +16,7 @@ export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const actionMessages = {
-  download: "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。",
+  download: "PNG 可以开始准备；浏览器会下载当前这张图文卡片。",
   share: "分享能力会在后续切片接入；现在没有调用系统分享。",
 } as const satisfies Record<CardActionName, string>
 
