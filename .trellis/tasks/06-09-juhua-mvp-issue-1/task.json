@@ -20,7 +20,8 @@
   "subtasks": [],
   "children": [
     "06-09-juhua-slice-01-prototype-route",
-    "06-12-issue-11-rate-limiting"
+    "06-12-issue-11-rate-limiting",
+    "06-15-issue-12-dom-to-png-download-flow"
   ],
   "parent": null,
   "relatedFiles": [],

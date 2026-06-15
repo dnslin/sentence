@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend route/component quality checklist for verification."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser-visible behavior contracts and action-state expectations to verify."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict TypeScript boundary checks for review."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer verification of card-action, exporter, and UI state flow."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Check for duplicated response/card/export contract logic."}

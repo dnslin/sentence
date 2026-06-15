@@ -1,0 +1,2 @@
+export const READY_CARD_EXPORT_WIDTH = 1080
+export const READY_CARD_EXPORT_HEIGHT = 1350
