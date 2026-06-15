@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 import {
   isReadyCardResponse,
@@ -649,7 +649,323 @@ test("refresh limit response keeps current card and shows gentle copy", async ({
   await expect(page.getByText(initialSentence ?? "")).toBeVisible()
 })
 
-test("download and share placeholder buttons call the limited action endpoint", async ({
+async function downloadCurrentCard(page: Page) {
+  const downloadPromise = page.waitForEvent("download")
+  await page.getByRole("button", { name: "下载 PNG" }).click()
+
+  return downloadPromise
+}
+
+async function installDownloadInspection(page: Page) {
+  await page.addInitScript(() => {
+    type DownloadInspectionWindow = typeof window & {
+      __lastDownloadUrl?: string
+    }
+
+    URL.revokeObjectURL = () => undefined
+
+    const originalClick = HTMLAnchorElement.prototype.click
+    HTMLAnchorElement.prototype.click = function click() {
+      if (this.download) {
+        ;(window as DownloadInspectionWindow).__lastDownloadUrl = this.href
+      }
+      return originalClick.call(this)
+    }
+  })
+}
+
+async function inspectDownloadedPng(page: Page) {
+  return page.evaluate(async () => {
+    type DownloadInspectionWindow = typeof window & {
+      __lastDownloadUrl?: string
+    }
+
+    const downloadUrl = (window as DownloadInspectionWindow).__lastDownloadUrl
+    if (!downloadUrl) throw new Error("download URL was not captured")
+
+    const response = await fetch(downloadUrl)
+    const blob = await response.blob()
+    const bitmap = await createImageBitmap(blob)
+    const canvas = document.createElement("canvas")
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+
+    const context = canvas.getContext("2d")
+    if (!context) throw new Error("test canvas unavailable")
+
+    context.drawImage(bitmap, 0, 0)
+    const illustrationPixel = Array.from(
+      context.getImageData(540, 420, 1, 1).data
+    )
+    const sentencePanelPixel = Array.from(
+      context.getImageData(540, 1060, 1, 1).data
+    )
+    const pageBackgroundPixel = Array.from(
+      context.getImageData(12, 12, 1, 1).data
+    )
+
+    bitmap.close()
+
+    return {
+      width: canvas.width,
+      height: canvas.height,
+      illustrationPixel,
+      sentencePanelPixel,
+      pageBackgroundPixel,
+    }
+  })
+}
+
+async function compareDownloadedPngToVisibleCard(
+  page: Page,
+  visibleCardPng: Buffer
+) {
+  return page.evaluate(async (visibleCardPngBase64) => {
+    type DownloadInspectionWindow = typeof window & {
+      __lastDownloadUrl?: string
+    }
+    type Pixel = [number, number, number, number]
+
+    const downloadUrl = (window as DownloadInspectionWindow).__lastDownloadUrl
+    if (!downloadUrl) throw new Error("download URL was not captured")
+
+    function blobFromBase64(base64: string) {
+      const binary = atob(base64)
+      const bytes = new Uint8Array(binary.length)
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index)
+      }
+      return new Blob([bytes], { type: "image/png" })
+    }
+
+    function sampleBitmap(bitmap: ImageBitmap) {
+      const canvas = document.createElement("canvas")
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      const context = canvas.getContext("2d")
+      if (!context) throw new Error("comparison canvas unavailable")
+
+      context.drawImage(bitmap, 0, 0)
+      return [
+        { x: 0.02, y: 0.5 },
+        { x: 0.5, y: 0.05 },
+        { x: 0.5, y: 0.2 },
+        { x: 0.5, y: 0.78 },
+        { x: 0.5, y: 0.95 },
+        { x: 0.98, y: 0.5 },
+      ].map(({ x, y }) => {
+        const pixel = context.getImageData(
+          Math.round((bitmap.width - 1) * x),
+          Math.round((bitmap.height - 1) * y),
+          1,
+          1
+        ).data
+        return Array.from(pixel) as Pixel
+      })
+    }
+
+    function colorDistance(left: Pixel, right: Pixel) {
+      return Math.hypot(
+        left[0] - right[0],
+        left[1] - right[1],
+        left[2] - right[2],
+        left[3] - right[3]
+      )
+    }
+
+    const downloadedResponse = await fetch(downloadUrl)
+    const downloadedBitmap = await createImageBitmap(
+      await downloadedResponse.blob()
+    )
+    const visibleBitmap = await createImageBitmap(
+      blobFromBase64(visibleCardPngBase64)
+    )
+    const downloadedSamples = sampleBitmap(downloadedBitmap)
+    const visibleSamples = sampleBitmap(visibleBitmap)
+    const distances = downloadedSamples.map((sample, index) =>
+      colorDistance(sample, visibleSamples[index] ?? sample)
+    )
+
+    downloadedBitmap.close()
+    visibleBitmap.close()
+
+    return {
+      distances,
+      maxDistance: Math.max(...distances),
+      downloadedSamples,
+      visibleSamples,
+    }
+  }, visibleCardPng.toString("base64"))
+}
+
+test("downloads the current card as a 1080x1350 PNG artifact", async ({
+  page,
+}) => {
+  await installDownloadInspection(page)
+
+  await page.goto("/")
+  const visibleSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+
+  const download = await downloadCurrentCard(page)
+  expect(download.suggestedFilename()).toMatch(
+    /^juhua-\d{4}-\d{2}-\d{2}-.+\.png$/
+  )
+  await expect(
+    page.getByText("PNG 已准备好，浏览器会开始下载这张图文卡片。")
+  ).toBeVisible()
+
+  const png = await inspectDownloadedPng(page)
+  expect(png.width).toBe(1080)
+  expect(png.height).toBe(1350)
+  expect(png.illustrationPixel).not.toEqual(png.sentencePanelPixel)
+  expect(png.pageBackgroundPixel).not.toEqual([247, 242, 234, 255])
+  expect(visibleSentence).toBe(`“${seedCard.sentence}”`)
+})
+
+test("downloaded PNG keeps the visible quiet-gallery card style", async ({
+  page,
+}) => {
+  await installDownloadInspection(page)
+
+  await page.goto("/")
+  const visibleCardPng = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .screenshot()
+
+  await downloadCurrentCard(page)
+  const comparison = await compareDownloadedPngToVisibleCard(page, visibleCardPng)
+
+  expect(comparison.maxDistance).toBeLessThanOrEqual(35)
+})
+
+test("downloads a card with a same-origin WebP illustration", async ({ page }) => {
+  const imageRequests: string[] = []
+
+  await clearReadyCards()
+  await seedGeneratedIllustrationReadyCard()
+  await installDownloadInspection(page)
+  page.on("request", (request) => {
+    const url = new URL(request.url())
+    if (url.pathname === generatedIllustrationUrl) imageRequests.push(url.pathname)
+  })
+
+  await page.goto("/")
+  await expect(
+    page.getByRole("img", { name: "真实 WebP 插画场景" })
+  ).toBeVisible()
+
+  await downloadCurrentCard(page)
+  const png = await inspectDownloadedPng(page)
+
+  expect(png.width).toBe(1080)
+  expect(png.height).toBe(1350)
+  expect(imageRequests).toContain(generatedIllustrationUrl)
+})
+
+test("download exports the refreshed current card instead of stale seed data", async ({
+  page,
+}) => {
+  const exportedCardIds: string[] = []
+
+  await installDownloadInspection(page)
+  await page.route("**/api/card-action", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        action: "download",
+        status: "allowed",
+        message: "allowed",
+      }),
+    })
+  })
+  await page.route("**/api/ready-card", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        card: {
+          id: "test-refreshed-download-card",
+          sentence: "新的风把纸页轻轻翻亮。",
+          sceneLabel: "测试刷新后的插画场景",
+          accent: "rain",
+          status: "ready",
+          illustrationUrl: null,
+        },
+      }),
+    })
+  })
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "再来一张" }).click()
+  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
+
+  const refreshedSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+
+  page.on("download", (download) => {
+    exportedCardIds.push(download.suggestedFilename())
+  })
+  await downloadCurrentCard(page)
+  const png = await inspectDownloadedPng(page)
+
+  expect(refreshedSentence).toBe("“新的风把纸页轻轻翻亮。”")
+  expect(exportedCardIds[0]).toContain("test-refreshed-download-card")
+  expect(png.width).toBe(1080)
+  expect(png.height).toBe(1350)
+})
+
+test("download limit response blocks PNG generation", async ({ page }) => {
+  await page.route("**/api/card-action", async (route) => {
+    await route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: "ready_card_limited",
+        message: "这个操作有点频繁了，先让当前图文卡片停留一会儿。",
+      }),
+    })
+  })
+
+  await page.goto("/")
+  const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
+  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await expect(
+    page.getByText("这个操作有点频繁了，先让当前图文卡片停留一会儿。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(unexpectedDownload).rejects.toThrow()
+})
+
+test("download export failure keeps current card and re-enables controls", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    HTMLCanvasElement.prototype.toBlob = function toBlob(callback) {
+      callback(null)
+    }
+  })
+
+  await page.goto("/")
+  const initialSentence = await page
+    .getByRole("article", { name: "图文卡片预览" })
+    .getByText(/^“.*”$/)
+    .textContent()
+
+  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await expect(
+    page.getByText("PNG 暂时没有准备成功，当前图文卡片已保留。请稍后再试。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByText(initialSentence ?? "")).toBeVisible()
+})
+
+test("share remains a truthful placeholder and does not trigger PNG export", async ({
   page,
 }) => {
   const actions: string[] = []
@@ -663,29 +979,22 @@ test("download and share placeholder buttons call the limited action endpoint", 
       body: JSON.stringify({
         action: body.action,
         status: "allowed",
-        message:
-          body.action === "download"
-            ? "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。"
-            : "分享能力会在后续切片接入；现在没有调用系统分享。",
+        message: "分享能力会在后续切片接入；现在没有调用系统分享。",
       }),
     })
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "下载 PNG" }).click()
-  await expect(
-    page.getByText("PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。")
-  ).toBeVisible()
-
+  const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
   await page.getByRole("button", { name: "分享" }).click()
   await expect(
     page.getByText("分享能力会在后续切片接入；现在没有调用系统分享。")
   ).toBeVisible()
-
-  expect(actions).toEqual([...cardActionNames])
+  await expect(unexpectedDownload).rejects.toThrow()
+  expect(actions).toEqual(["share"])
 })
 
-test("disables both placeholder action buttons while one action is pending", async ({
+test("disables both action buttons while download export is pending", async ({
   page,
 }) => {
   let releaseResponse: (() => void) | undefined
@@ -700,7 +1009,7 @@ test("disables both placeholder action buttons while one action is pending", asy
       body: JSON.stringify({
         action: "download",
         status: "allowed",
-        message: "PNG 下载会在后续切片接入；现在先保留这张卡片的安静样子。",
+        message: "allowed",
       }),
     })
   })
@@ -708,7 +1017,7 @@ test("disables both placeholder action buttons while one action is pending", asy
   await page.goto("/")
   await page.getByRole("button", { name: "下载 PNG" }).click()
 
-  await expect(page.getByRole("button", { name: "下载确认中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "PNG 准备中" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
 
   releaseResponse?.()
@@ -716,7 +1025,7 @@ test("disables both placeholder action buttons while one action is pending", asy
   await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
 
-test("download and share limit responses show calm placeholder feedback", async ({
+test("share limit response shows calm placeholder feedback", async ({
   page,
 }) => {
   await page.route("**/api/card-action", async (route) => {
@@ -731,14 +1040,11 @@ test("download and share limit responses show calm placeholder feedback", async 
   })
 
   await page.goto("/")
-
-  for (const buttonName of ["下载 PNG", "分享"]) {
-    await page.getByRole("button", { name: buttonName }).click()
-    await expect(
-      page.getByText("这个操作有点频繁了，先让当前图文卡片停留一会儿。")
-    ).toBeVisible()
-    await expect(page.getByRole("button", { name: buttonName })).toBeEnabled()
-  }
+  await page.getByRole("button", { name: "分享" }).click()
+  await expect(
+    page.getByText("这个操作有点频繁了，先让当前图文卡片停留一会儿。")
+  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
 
 test("keeps seeding idempotent for a fresh public ready-card visitor", async ({

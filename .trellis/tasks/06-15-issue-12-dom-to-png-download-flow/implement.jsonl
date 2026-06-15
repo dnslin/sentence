@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend route/component pre-development checklist for homepage and browser-visible behavior."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Contracts for browser-visible checks, placeholder actions, refresh state, and production/prototype UI exclusion."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict TypeScript route and boundary normalization guidance."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Component convention placeholder and accessibility reminder for UI changes."}
+{"file":".trellis/spec/guides/index.md","reason":"Shared thinking-guide index required before implementation."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Download flow crosses endpoint guard, UI state, exporter, and browser download boundaries."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Search/reuse guidance before creating export helpers or duplicate payload types."}

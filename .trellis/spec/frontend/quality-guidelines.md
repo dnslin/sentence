@@ -422,11 +422,11 @@ setCurrentCard(body.card)
 
 ---
 
-## Placeholder Download/Share Action UI State
+## Card Action Gate for Download and Share UI State
 
 ### 1. Scope / Trigger
 
-Use this contract when a production-facing route keeps download/share as placeholder actions while still recording or limiting those public action attempts through the server.
+Use this contract when a production-facing route starts a public card action through `POST /api/card-action`. After Slice 11, `download` is a real PNG export gated by this endpoint; `share` remains a truthful placeholder until the Web Share slice.
 
 ### 2. Signatures
 
@@ -434,7 +434,7 @@ Use this contract when a production-facing route keeps download/share as placeho
 
 ```typescript
 // app/api/card-action/route.ts
-POST / api / card - action
+POST /api/card-action
 ```
 
 **Request/response contracts**
@@ -467,44 +467,47 @@ function isReadyCardLimitErrorResponse(
 
 ### 3. Contracts
 
-- Download/share buttons may call `POST /api/card-action` to record and rate-limit placeholder action attempts.
-- An allowed response must preserve truthful placeholder copy: it may say PNG download/share will arrive in a later slice, but must not create or imply a real file/share operation.
+- Download/share buttons must call `POST /api/card-action` before performing the public action so server-side anonymous rate limits are exercised.
+- A valid allowed response must echo the requested action; if `body.action !== requestedAction`, treat the payload as invalid and show retry-oriented failure copy.
+- For `download`, a valid allowed response may continue into the PNG export flow. A blocked or invalid response must not generate a PNG or trigger a browser download.
+- For `share`, allowed responses must preserve truthful placeholder copy until real Web Share behavior is implemented.
 - A `ready_card_limited` response must announce calm limit copy, preserve the current 图文卡片, and re-enable the button.
 - Invalid JSON, network failures, unknown non-OK responses, and invalid success payloads map to non-technical retry-oriented copy.
 - UI code must treat endpoint JSON as `unknown` and narrow through shared guards; do not duplicate card-action payload types locally in components.
-- Pending placeholder action state must prevent duplicate and ambiguous concurrent placeholder requests. Disable both download/share buttons while either placeholder action is pending, and use clear button copy such as `下载确认中` / `分享确认中` for the active action.
-- This placeholder endpoint does not make real DOM-to-PNG or Web Share capabilities available; public copy must continue to say those capabilities are future slices.
+- Pending action state must prevent duplicate and ambiguous concurrent public actions. Disable both download/share buttons while either action is pending, and use clear button copy such as `PNG 准备中` / `分享确认中` for the active action.
+- Public copy must match implemented capability: download may claim PNG export only after the export slice; share must remain future-slice copy until its owning slice.
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                                   | Required behavior                                                                            |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `POST /api/card-action` returns valid allowed `download` response           | Announce truthful PNG placeholder copy.                                                      |
-| `POST /api/card-action` returns valid allowed `share` response              | Announce truthful share placeholder copy.                                                    |
-| Endpoint returns `429 ready_card_limited`                                   | Announce calm limit copy and keep current card visible.                                      |
-| Endpoint returns invalid success JSON                                       | Announce non-technical failure copy.                                                         |
-| Endpoint request fails or returns unknown non-OK JSON                       | Announce non-technical failure copy.                                                         |
-| User clicks either placeholder action while a placeholder action is pending | Both placeholder action buttons are disabled; do not silently drop an enabled-looking click. |
+| Condition                                                         | Required behavior                                                                 |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `POST /api/card-action` returns valid allowed `download` response | Continue into the PNG export flow.                                                |
+| `POST /api/card-action` returns valid allowed `share` response    | Announce truthful share placeholder copy; do not call `navigator.share` yet.      |
+| Allowed response action does not match the requested action       | Treat as invalid payload; show retry-oriented failure copy and do not act.        |
+| Endpoint returns `429 ready_card_limited`                         | Announce calm limit copy, keep current card visible, and do not export/share.     |
+| Endpoint returns invalid success JSON                             | Announce non-technical failure copy.                                              |
+| Endpoint request fails or returns unknown non-OK JSON             | Announce non-technical failure copy.                                              |
+| User clicks either action while an action is pending              | Both action buttons are disabled; do not silently drop an enabled-looking click.  |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: clicking `下载 PNG` calls `/api/card-action` with `{ action: "download" }`, receives allowed placeholder copy, and does not start client-side PNG generation.
+- Good: clicking `下载 PNG` calls `/api/card-action` with `{ action: "download" }`, receives an echoed allowed response, then exports the current 图文卡片.
 - Good: clicking `分享` calls `/api/card-action` with `{ action: "share" }`, receives allowed placeholder copy, and does not call `navigator.share` before the share slice.
-- Good: while a download placeholder request is pending, both `下载 PNG` and `分享` are disabled so the UI does not silently drop an enabled-looking share click.
+- Good: while a download export request is pending, both `下载 PNG` and `分享` are disabled so the UI does not silently drop an enabled-looking share click.
 - Good: a `429 ready_card_limited` response keeps the current 图文卡片 and says the operation is too frequent in calm language.
-- Base: placeholder action network failure leaves the card visible and asks the user to retry later.
-- Bad: pure client-only placeholder clicks after the rate-limit slice; download/share server-side limits would not be exercised.
-- Bad: changing button copy to imply real PNG or system share support before later slices implement those capabilities.
+- Base: action network failure leaves the card visible and asks the user to retry later.
+- Bad: pure client-only action clicks after the rate-limit slice; server-side limits would not be exercised.
+- Bad: using an allowed `share` response to trigger PNG export, or an allowed `download` response to trigger share behavior.
 
 ### 6. Tests Required
 
-For placeholder action UI work, use browser-visible tests that assert:
+For card-action UI work, use browser-visible tests that assert:
 
-- `下载 PNG` sends `{ action: "download" }` to `/api/card-action` and announces allowed placeholder copy.
-- `分享` sends `{ action: "share" }` to `/api/card-action` and announces allowed placeholder copy.
-- `429 ready_card_limited` from `/api/card-action` announces calm limit copy and re-enables the clicked button.
+- `下载 PNG` sends `{ action: "download" }` to `/api/card-action` before a browser download is observed.
+- `分享` sends `{ action: "share" }` to `/api/card-action` and announces placeholder copy while no PNG download or system share occurs.
+- `429 ready_card_limited` from `/api/card-action` announces calm limit copy, re-enables the clicked button, and does not continue into the action.
 - Failure or invalid endpoint payload leaves the current 图文卡片 visible and announces non-technical retry copy.
-- While one placeholder action is pending, both placeholder action buttons are disabled and no enabled-looking click is silently dropped.
+- While one action is pending, both action buttons are disabled and no enabled-looking click is silently dropped.
 - `pnpm test:e2e`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
 
 ### 7. Wrong vs Correct
@@ -513,21 +516,22 @@ For placeholder action UI work, use browser-visible tests that assert:
 
 ```tsx
 // Bypasses server-side action limiting after the rate-limit slice.
-<Button onClick={() => announce("PNG 下载会在后续切片接入。")}>下载 PNG</Button>
+<Button onClick={() => exportReadyCardToPng(currentCard)}>下载 PNG</Button>
 ```
 
 ```tsx
-// Claims a real capability before the owning slice exists.
-<Button onClick={() => announce("已下载 PNG")}>下载 PNG</Button>
+// Trusts a success payload for the wrong action.
+if (isCardActionResponse(body)) await exportReadyCardToPng(currentCard)
 ```
 
 #### Correct
 
 ```tsx
+const requestedAction = "download"
 const response = await fetch("/api/card-action", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ action: "download" }),
+  body: JSON.stringify({ action: requestedAction }),
 })
 const body: unknown = await response.json().catch(() => null)
 
@@ -540,8 +544,139 @@ if (!response.ok) {
   return
 }
 
-if (!isCardActionResponse(body)) throw new Error("invalid action response")
-announce(body.message)
+if (!isCardActionResponse(body) || body.action !== requestedAction) {
+  throw new Error("invalid action response")
+}
+```
+
+---
+
+## DOM-to-PNG Download Export UI State
+
+### 1. Scope / Trigger
+
+Use this contract when `下载 PNG` is implemented as a browser-visible export of the current 图文卡片.
+
+### 2. Signatures
+
+**Client exporter**
+
+```typescript
+export const READY_CARD_EXPORT_WIDTH = 1080
+export const READY_CARD_EXPORT_HEIGHT = 1350
+
+export type ReadyCardPngExport = {
+  blob: Blob
+  fileName: string
+  width: typeof READY_CARD_EXPORT_WIDTH
+  height: typeof READY_CARD_EXPORT_HEIGHT
+}
+
+export function exportReadyCardToPng(
+  cardNode: HTMLElement,
+  card: PublicReadyCard
+): Promise<ReadyCardPngExport>
+```
+
+**Download helper**
+
+```typescript
+export function downloadBlob(blob: Blob, fileName: string): void
+```
+
+### 3. Contracts
+
+- The export input is the current `QuietGalleryCard` DOM node plus the current `PublicReadyCard` for metadata such as the filename. Do not hand-recreate card layout in a parallel canvas implementation.
+- Use the DOM-to-image path to capture the real card DOM/CSS so the downloaded PNG shares the same style source as the webpage card.
+- The DOM-to-image output must be scaled to exactly `1080 × 1350` via export options such as `canvasWidth` and `canvasHeight`.
+- The PNG must include the current sentence and either the same-origin WebP illustration or the CSS fallback illustration for `illustrationUrl: null` because both live inside the captured card DOM.
+- The PNG must exclude page background, buttons, source metadata, watermark, prototype/debug UI, and action announcements by capturing only the card article node, not the page or action wrapper.
+- Same-origin public illustration URLs may be captured by the DOM-to-image library; remote or unsafe URLs must not be introduced as an export strategy.
+- Wait for `document.fonts.ready` when available, but do not add a remote-font dependency for the export path.
+- Export failures must preserve the current 图文卡片, re-enable action buttons, and show non-technical retry copy.
+- Production exporter modules must not expose test-only globals, callbacks, or debug probes. Browser tests should inject observation seams with Playwright `addInitScript` when they need to observe anchor clicks or blob URLs.
+
+### 4. Validation & Error Matrix
+
+| Condition                                      | Required behavior                                                               |
+| ---------------------------------------------- | ------------------------------------------------------------------------------- |
+| Allowed download action and valid current card node | Generate one PNG download for the current card DOM.                         |
+| Exported PNG is inspected in the browser       | Dimensions are exactly `1080 × 1350`.                                           |
+| Exported PNG is compared with visible card     | Sampled card-style pixels remain close to the visible `QuietGalleryCard`.       |
+| `illustrationUrl` is same-origin public WebP   | The captured card includes the real image from the public image route.          |
+| `illustrationUrl` is `null`                    | The captured card includes the CSS fallback illustration.                       |
+| Card node is missing or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls.            |
+| Card-action gate returns `ready_card_limited`  | Do not call the exporter and do not trigger a browser download.                 |
+| Test needs download/blob observability         | Inject test-only monkeypatches from Playwright, not from production modules.    |
+
+### 5. Good/Base/Bad Cases
+
+- Good: after a refresh replaces the current card, `下载 PNG` captures the refreshed `QuietGalleryCard` DOM and uses the refreshed card id in the filename.
+- Good: a stored WebP card exports through the same-origin public image route and still produces a 1080×1350 PNG.
+- Base: a seed card with `illustrationUrl: null` exports the same CSS fallback art and sentence text visible on the page.
+- Good: tests inspect the downloaded blob with `createImageBitmap` and compare sampled pixels against a screenshot of the visible card article.
+- Bad: adding `window.__readyCardExportInputs` or a similar production global only so tests can inspect exporter input.
+- Bad: hand-recreating card layout, gradients, typography, and wrapping in canvas; this drifts from the real `QuietGalleryCard` style.
+- Bad: screenshotting `document.body` or a wrapper that can include controls, source metadata, prototype UI, or page background.
+
+### 6. Tests Required
+
+For PNG export work, use browser-visible tests that assert:
+
+- Clicking `下载 PNG` reaches a Playwright `download` event after a successful card-action gate.
+- The downloaded PNG decodes in the browser and has exact `1080 × 1350` dimensions.
+- The downloaded PNG stays visually aligned with the visible `QuietGalleryCard` style by comparing it to a browser screenshot of the card article.
+- A same-origin WebP illustration card is captured from the public image URL during export.
+- A refreshed current card is exported instead of stale seed data.
+- A `ready_card_limited` card-action response blocks PNG generation and produces no download event.
+- Export failure leaves the current card visible, re-enables controls, and shows retry copy.
+- Tests do not require production-only test globals; observation hooks live in the Playwright page context.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Production exporter polluted for tests.
+declare global {
+  interface Window {
+    __readyCardExportInputs?: PublicReadyCard[]
+  }
+}
+window.__readyCardExportInputs?.push(card)
+```
+
+```typescript
+// Parallel layout implementation drifts from the real card CSS.
+drawFallbackIllustration(context, card.accent)
+drawSentence(context, card.sentence)
+```
+
+```tsx
+// Captures too much and can include controls/source/prototype UI.
+await htmlToImage.toPng(document.body)
+```
+
+#### Correct
+
+```typescript
+const blob = await toBlob(cardNode, {
+  cacheBust: true,
+  canvasWidth: READY_CARD_EXPORT_WIDTH,
+  canvasHeight: READY_CARD_EXPORT_HEIGHT,
+  pixelRatio: 1,
+})
+```
+
+```typescript
+// Test-only observability belongs in Playwright.
+await page.addInitScript(() => {
+  const originalClick = HTMLAnchorElement.prototype.click
+  HTMLAnchorElement.prototype.click = function click() {
+    if (this.download) window.__lastDownloadUrl = this.href
+    return originalClick.call(this)
+  }
+})
 ```
 
 ---
@@ -551,6 +686,7 @@ announce(body.message)
 - For route features, verify the route through browser-observable behavior when feasible.
 - Keep prototype copy from implying future slices are already implemented.
 - Use semantic elements (`main`, `section`, `article`, `nav`, `aside`) for page structure.
+- For browser download/export behavior, observe downloads/blobs/canvas through Playwright-injected hooks rather than production test hooks.
 
 ---
 
@@ -559,6 +695,7 @@ announce(body.message)
 - No debug logging left in production-facing frontend code.
 - No prototype-only controls rendered in production DOM.
 - No copy that claims unavailable actions such as refresh/download/share before those slices implement them.
+- No test-only globals, callbacks, or debug probes in production client modules.
 
 ---
 

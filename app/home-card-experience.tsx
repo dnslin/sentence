@@ -1,8 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { downloadBlob } from "@/lib/card-export/download"
+import { exportReadyCardToPng } from "@/lib/card-export/png"
 import {
   isCardActionResponse,
   isReadyCardErrorResponse,
@@ -24,6 +26,10 @@ const cardActionFailureAnnouncement =
   "这个操作暂时没有成功，当前图文卡片已保留。请稍后再试。"
 const cardActionLimitAnnouncement =
   "这个操作有点频繁了，先让当前图文卡片停留一会儿。"
+const downloadSuccessAnnouncement =
+  "PNG 已准备好，浏览器会开始下载这张图文卡片。"
+const downloadFailureAnnouncement =
+  "PNG 暂时没有准备成功，当前图文卡片已保留。请稍后再试。"
 
 type Announcement = {
   text: string
@@ -56,6 +62,7 @@ function getCardActionErrorAnnouncement(body: unknown) {
 }
 
 export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
+  const cardRef = useRef<HTMLElement>(null)
   const [currentCard, setCurrentCard] = useState(card)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [pendingCardAction, setPendingCardAction] =
@@ -100,6 +107,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
     if (pendingCardAction) return
 
     setPendingCardAction(action)
+    announce(action === "download" ? "PNG 准备中。" : "分享确认中。")
 
     try {
       const response = await fetch("/api/card-action", {
@@ -114,12 +122,28 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
         return
       }
 
-      if (!isCardActionResponse(body))
+      if (!isCardActionResponse(body) || body.action !== action)
         throw new Error("invalid action response")
+
+      if (action === "download") {
+        if (!cardRef.current) throw new Error("missing card export node")
+
+        const exportedCard = await exportReadyCardToPng(
+          cardRef.current,
+          currentCard
+        )
+        downloadBlob(exportedCard.blob, exportedCard.fileName)
+        announce(downloadSuccessAnnouncement)
+        return
+      }
 
       announce(body.message)
     } catch {
-      announce(cardActionFailureAnnouncement)
+      announce(
+        action === "download"
+          ? downloadFailureAnnouncement
+          : cardActionFailureAnnouncement
+      )
     } finally {
       setPendingCardAction(null)
     }
@@ -128,6 +152,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
   return (
     <>
       <QuietGalleryCard
+        ref={cardRef}
         card={currentCard}
         isRefreshing={isRefreshing}
         isTilted={false}
@@ -155,7 +180,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             disabled={pendingCardAction !== null}
             onClick={() => void runCardAction("download")}
           >
-            {pendingCardAction === "download" ? "下载确认中" : "下载 PNG"}
+            {pendingCardAction === "download" ? "PNG 准备中" : "下载 PNG"}
           </Button>
           <Button
             type="button"
