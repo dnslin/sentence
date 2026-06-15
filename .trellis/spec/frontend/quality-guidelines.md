@@ -342,7 +342,7 @@ export function QuietGalleryCard({
 - While refresh is pending, the button must be disabled or otherwise prevent duplicate concurrent requests.
 - Pending state must be visible through public UI, such as button copy and `aria-busy` on the card article.
 - Failure must keep the current card visible, announce that refresh failed, and re-enable retry.
-- Public copy must say refresh is implemented only after it really calls the API; download/share placeholder copy must remain truthful until those actions are implemented.
+- Public copy must claim refresh, download, or share capability only after the relevant slice implements the real browser/API flow.
 - Non-essential motion must use `motion-safe`/`motion-reduce` so reduced-motion users do not depend on animation to understand state.
 
 ### 4. Validation & Error Matrix
@@ -383,7 +383,7 @@ For refresh UI work, use browser-visible tests that assert:
 - A failed response keeps the current card, announces non-technical retry-oriented failure, and allows retry.
 - A `ready_card_not_found` response keeps the current card, announces calm empty-stock copy, and allows retry.
 - A `ready_card_limited` response keeps the current card, announces gentle limit copy, and does not start an automatic retry/generation loop.
-- Placeholder actions not implemented in the current slice still announce truthful placeholder copy.
+- Actions not implemented in the current slice still announce truthful placeholder copy; implemented actions announce their real browser/API behavior.
 
 ### 7. Wrong vs Correct
 
@@ -426,7 +426,7 @@ setCurrentCard(body.card)
 
 ### 1. Scope / Trigger
 
-Use this contract when a production-facing route starts a public card action through `POST /api/card-action`. After Slice 11, `download` is a real PNG export gated by this endpoint; `share` remains a truthful placeholder until the Web Share slice.
+Use this contract when a production-facing route starts a public card action through `POST /api/card-action`. After Slice 12, `download` is a real PNG export gated by this endpoint, and `share` is a Web Share file action with a PNG download fallback.
 
 ### 2. Signatures
 
@@ -470,29 +470,29 @@ function isReadyCardLimitErrorResponse(
 - Download/share buttons must call `POST /api/card-action` before performing the public action so server-side anonymous rate limits are exercised.
 - A valid allowed response must echo the requested action; if `body.action !== requestedAction`, treat the payload as invalid and show retry-oriented failure copy.
 - For `download`, a valid allowed response may continue into the PNG export flow. A blocked or invalid response must not generate a PNG or trigger a browser download.
-- For `share`, allowed responses must preserve truthful placeholder copy until real Web Share behavior is implemented.
+- For `share`, a valid allowed response may continue into the PNG export flow, then either call Web Share file sharing or fall back to PNG download when file sharing is unavailable. A blocked or invalid response must not generate a PNG, call Web Share, or trigger a browser download.
 - A `ready_card_limited` response must announce calm limit copy, preserve the current 图文卡片, and re-enable the button.
 - Invalid JSON, network failures, unknown non-OK responses, and invalid success payloads map to non-technical retry-oriented copy.
 - UI code must treat endpoint JSON as `unknown` and narrow through shared guards; do not duplicate card-action payload types locally in components.
 - Pending action state must prevent duplicate and ambiguous concurrent public actions. Disable both download/share buttons while either action is pending, and use clear button copy such as `PNG 准备中` / `分享确认中` for the active action.
-- Public copy must match implemented capability: download may claim PNG export only after the export slice; share must remain future-slice copy until its owning slice.
+- Public copy must match implemented capability: download may claim PNG export only after the export slice; share may claim browser sharing/download fallback only after the Web Share slice.
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                         | Required behavior                                                                 |
-| ----------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `POST /api/card-action` returns valid allowed `download` response | Continue into the PNG export flow.                                                |
-| `POST /api/card-action` returns valid allowed `share` response    | Announce truthful share placeholder copy; do not call `navigator.share` yet.      |
-| Allowed response action does not match the requested action       | Treat as invalid payload; show retry-oriented failure copy and do not act.        |
-| Endpoint returns `429 ready_card_limited`                         | Announce calm limit copy, keep current card visible, and do not export/share.     |
-| Endpoint returns invalid success JSON                             | Announce non-technical failure copy.                                              |
-| Endpoint request fails or returns unknown non-OK JSON             | Announce non-technical failure copy.                                              |
-| User clicks either action while an action is pending              | Both action buttons are disabled; do not silently drop an enabled-looking click.  |
+| Condition                                                         | Required behavior                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `POST /api/card-action` returns valid allowed `download` response | Continue into the PNG export flow.                                                    |
+| `POST /api/card-action` returns valid allowed `share` response    | Continue into PNG export, then share via Web Share file support or fallback download. |
+| Allowed response action does not match the requested action       | Treat as invalid payload; show retry-oriented failure copy and do not act.            |
+| Endpoint returns `429 ready_card_limited`                         | Announce calm limit copy, keep current card visible, and do not export/share.         |
+| Endpoint returns invalid success JSON                             | Announce non-technical failure copy.                                                  |
+| Endpoint request fails or returns unknown non-OK JSON             | Announce non-technical failure copy.                                                  |
+| User clicks either action while an action is pending              | Both action buttons are disabled; do not silently drop an enabled-looking click.      |
 
 ### 5. Good/Base/Bad Cases
 
 - Good: clicking `下载 PNG` calls `/api/card-action` with `{ action: "download" }`, receives an echoed allowed response, then exports the current 图文卡片.
-- Good: clicking `分享` calls `/api/card-action` with `{ action: "share" }`, receives allowed placeholder copy, and does not call `navigator.share` before the share slice.
+- Good: clicking `分享` calls `/api/card-action` with `{ action: "share" }`, receives an echoed allowed response, then exports the current 图文卡片 before Web Share/fallback delivery.
 - Good: while a download export request is pending, both `下载 PNG` and `分享` are disabled so the UI does not silently drop an enabled-looking share click.
 - Good: a `429 ready_card_limited` response keeps the current 图文卡片 and says the operation is too frequent in calm language.
 - Base: action network failure leaves the card visible and asks the user to retry later.
@@ -504,7 +504,7 @@ function isReadyCardLimitErrorResponse(
 For card-action UI work, use browser-visible tests that assert:
 
 - `下载 PNG` sends `{ action: "download" }` to `/api/card-action` before a browser download is observed.
-- `分享` sends `{ action: "share" }` to `/api/card-action` and announces placeholder copy while no PNG download or system share occurs.
+- `分享` sends `{ action: "share" }` to `/api/card-action` before Web Share or fallback download is observed.
 - `429 ready_card_limited` from `/api/card-action` announces calm limit copy, re-enables the clicked button, and does not continue into the action.
 - Failure or invalid endpoint payload leaves the current 图文卡片 visible and announces non-technical retry copy.
 - While one action is pending, both action buttons are disabled and no enabled-looking click is silently dropped.
@@ -600,18 +600,18 @@ export function downloadBlob(blob: Blob, fileName: string): void
 
 ### 4. Validation & Error Matrix
 
-| Condition                                      | Required behavior                                                               |
-| ---------------------------------------------- | ------------------------------------------------------------------------------- |
-| Allowed download action and valid current card node | Generate one PNG download for the current card DOM.                         |
-| Exported PNG is inspected in the browser       | Dimensions are exactly `1080 × 1350`.                                           |
-| Exported PNG is compared with visible card     | Sampled card-style pixels remain close to the visible `QuietGalleryCard`.       |
-| `illustrationUrl` is same-origin public WebP   | Wait for image load/decode; the captured card includes the real image from the public image route. |
-| `illustrationUrl` is `null`                    | The captured card includes the CSS fallback illustration.                       |
-| Refresh is pending                             | Download/share are disabled; do not export the transient refreshing card style. |
-| Download/share is pending                      | Refresh is disabled; do not mutate the card DOM while export may be reading it. |
-| Card node is missing, card image fails, or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls. |
-| Card-action gate returns `ready_card_limited`  | Do not call the exporter and do not trigger a browser download.                 |
-| Test needs download/blob observability         | Inject test-only monkeypatches from Playwright while preserving production cleanup behavior. |
+| Condition                                                               | Required behavior                                                                                  |
+| ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Allowed download action and valid current card node                     | Generate one PNG download for the current card DOM.                                                |
+| Exported PNG is inspected in the browser                                | Dimensions are exactly `1080 × 1350`.                                                              |
+| Exported PNG is compared with visible card                              | Sampled card-style pixels remain close to the visible `QuietGalleryCard`.                          |
+| `illustrationUrl` is same-origin public WebP                            | Wait for image load/decode; the captured card includes the real image from the public image route. |
+| `illustrationUrl` is `null`                                             | The captured card includes the CSS fallback illustration.                                          |
+| Refresh is pending                                                      | Download/share are disabled; do not export the transient refreshing card style.                    |
+| Download/share is pending                                               | Refresh is disabled; do not mutate the card DOM while export may be reading it.                    |
+| Card node is missing, card image fails, or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls.                                    |
+| Card-action gate returns `ready_card_limited`                           | Do not call the exporter and do not trigger a browser download.                                    |
+| Test needs download/blob observability                                  | Inject test-only monkeypatches from Playwright while preserving production cleanup behavior.       |
 
 ### 5. Good/Base/Bad Cases
 
@@ -683,6 +683,86 @@ await page.addInitScript(() => {
   }
 })
 ```
+
+---
+
+## Web Share File Sharing with Download Fallback
+
+### 1. Scope / Trigger
+
+Use this contract when `分享` is implemented as browser-visible delivery of the current 图文卡片 PNG through Web Share API with PNG download fallback.
+
+### 2. Signatures
+
+**Share helper**
+
+```typescript
+export type ReadyCardSharePayload = {
+  file: File
+  title: string
+  text: string
+}
+
+function createReadyCardSharePayload(
+  exportedCard: ReadyCardPngExport
+): ReadyCardSharePayload
+function canShareReadyCardFile(payload: ReadyCardSharePayload): boolean
+function shareReadyCardFile(payload: ReadyCardSharePayload): Promise<void>
+```
+
+**Delivery source**
+
+```typescript
+const exportedCard = await exportReadyCardToPng(cardNode, currentCard)
+const sharePayload = createReadyCardSharePayload(exportedCard)
+```
+
+### 3. Contracts
+
+- Share must use the same `ReadyCardPngExport` produced by the DOM-to-PNG download flow. Do not build a parallel share artifact or share a URL in place of the current card PNG.
+- Share must run only after `POST /api/card-action` returns a valid allowed response echoing `action: "share"`.
+- The shared `File` must be built from the exported PNG `Blob`, use the exported filename, and use MIME type `image/png`.
+- Web Share file support requires both `navigator.share` and `navigator.canShare`. The capability probe must call `navigator.canShare` with the SAME `ShareData` that `navigator.share` will receive (the combined `{ files, title, text }` payload), built from one shared helper so the probe and the real call cannot drift. Probing only `{ files }` can pass on browsers that later reject the combined payload.
+- If file sharing is unavailable before invoking `navigator.share` (missing `navigator.share`/`navigator.canShare`, `canShare` throws, or `canShare` returns false for the combined payload), fall back to `downloadBlob(exported.blob, exported.fileName)` and announce that PNG download is starting.
+- If `navigator.share` rejects after invocation, distinguish user cancellation from real failure. An `AbortError` (the user dismissed the native share sheet) maps to calm non-retry copy and must not download. Any other rejection (including `NotAllowedError`) maps to non-technical retry-oriented failure copy. Neither case automatically downloads, because the share sheet may already have opened.
+- Share metadata must use truthful generic product language for one current 图文卡片; it must not imply accounts, saved history, galleries, posting, or named living-artist style.
+- Production code must not expose test-only globals or callbacks. Browser tests should install Web Share/download observation seams with Playwright `addInitScript`.
+
+### 4. Validation & Error Matrix
+
+| Condition                                                                                                          | Required behavior                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| Valid allowed `share` response and supported Web Share files (probe of the combined `{ files, title, text }` passes)| Export the current card, call `navigator.share` with one PNG `File`, and do not download.             |
+| Missing `navigator.share`/`navigator.canShare`, `canShare` throws, or `canShare` returns false for the combined payload | Export the current card, trigger PNG download, do not call `navigator.share`, and announce fallback copy. |
+| Current card was refreshed before share                                                                            | Shared/downloaded filename and pixels come from the refreshed card, not initial seed data.            |
+| Card-action response is blocked, invalid, or echoes the wrong action                                               | Do not export, call Web Share, or download; show limit/failure copy.                                  |
+| Export fails before capability branch                                                                              | Keep current card visible, re-enable controls, and show share failure copy.                           |
+| `navigator.share` rejects with `AbortError` (user cancelled the share sheet)                                       | Keep current card visible, re-enable controls, show calm non-retry copy, and do not download.         |
+| `navigator.share` rejects with any other error (e.g. `NotAllowedError`)                                            | Keep current card visible, re-enable controls, show non-technical retry copy, and do not download.    |
+
+### 5. Good/Base/Bad Cases
+
+- Good: a supported browser receives a PNG `File` named like the download artifact, with exact `1080 × 1350` dimensions.
+- Good: an unsupported browser still receives the same PNG through the existing download helper.
+- Good: tests decode the shared/downloaded Blob in the browser to verify dimensions without adding production test hooks.
+- Base: user cancels a native share sheet (`AbortError`); the current card stays visible, no download fires, and the UI shows calm non-retry copy.
+- Bad: probing `navigator.canShare({ files })` only, then calling `navigator.share({ files, title, text })`; a browser that rejects the combined payload would skip the fallback and fail at share time.
+- Bad: treating every `navigator.share` rejection as unsupported capability and starting an unwanted download.
+- Bad: mapping an `AbortError` cancellation to retry-oriented failure copy that tells the user to try again.
+- Bad: sharing a page URL while the issue requires the current generated PNG artifact.
+
+### 6. Tests Required
+
+For Web Share file work, use browser-visible tests that assert:
+
+- Supported Web Share file capability calls `navigator.share` with one PNG `File` generated from the current card and triggers no download. The supported stub's `canShare` must validate the full combined payload (files plus string title and text), mirroring a real browser, so it cannot pass when production probes only `{ files }`.
+- Unsupported file-sharing capability falls back to a PNG download whose dimensions match `READY_CARD_EXPORT_WIDTH × READY_CARD_EXPORT_HEIGHT`. Cover each unsupported branch: combined-payload rejection (files-only true, combined false), missing `navigator.share`/`navigator.canShare`, and a throwing `canShare`. Each asserts the fallback download and that `navigator.share` was never invoked.
+- Sharing after refresh uses the refreshed current card.
+- A blocked or invalid card-action response prevents Web Share and fallback download.
+- A user cancellation (`navigator.share` rejects with `AbortError`) shows calm non-retry copy, keeps the current card, and does not download; `navigator.share` was invoked once.
+- A non-cancellation rejection (e.g. `NotAllowedError`) shows retry-oriented failure copy, keeps the current card, and does not auto-download.
+- Negative no-download assertions should be deterministic where feasible: assert the success/limit/failure announcement first, then assert an injected `window.__lastDownloadUrl` is undefined, rather than relying solely on a fixed `waitForEvent('download')` timeout.
+- `pnpm test:e2e -- --grep "share|download"`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` pass.
 
 ---
 

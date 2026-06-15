@@ -478,7 +478,7 @@ type ReadyCardLimitErrorResponse = {
 }
 ```
 
-**Placeholder action API**
+**Card action gate API**
 
 - `POST /api/card-action`
 - Request: `{ action: "download" | "share" }`
@@ -495,7 +495,7 @@ type ReadyCardLimitErrorResponse = {
 - `/` and `GET /api/ready-card` must use the same refresh-limited selection service. Homepage reloads must not bypass refresh quota.
 - Refresh quota consumption and ready-card select/record must share one `BEGIN IMMEDIATE` transaction through `getRateLimitedNextReadyCardForVisitor(...)` so selection failures roll back quota consumption.
 - A blocked refresh returns HTTP `429` from `/api/ready-card` or a calm limited homepage state from `/`; it must not call ready-card selection and must not insert `ready_card_views`.
-- `POST /api/card-action` is a no-op product endpoint for placeholder `download` and `share` actions until real download/share slices exist. It records/limits the action but must not generate PNG files, invoke Web Share, or claim those capabilities are implemented.
+- `POST /api/card-action` is the server-side gate for public `download` and `share` actions. It records/limits the action and returns truthful allowed copy, but the route itself must not generate PNG files, invoke Web Share, or trigger browser downloads; client code performs the allowed action after validating the echoed action.
 - Counter updates must run inside `BEGIN IMMEDIATE` on the runtime SQLite connection so same-key concurrent requests cannot over-admit above the configured threshold.
 - The limiter must prune windows older than `rateLimitRetentionMs` on the consume path so `rate_limit_windows` remains bounded.
 - Route handlers must parse request/response JSON as `unknown` at boundaries and narrow through shared guards from `lib/cards/public-ready-card.ts`.
@@ -507,7 +507,7 @@ type ReadyCardLimitErrorResponse = {
 | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Refresh count is below `120` for the current one-hour window                            | Increment the `refresh` row and continue to ready-card selection inside the same transaction.                                                             |
 | Refresh count has reached `120`                                                         | `/api/ready-card` returns `429 { error: "ready_card_limited" }` with `Retry-After`; `/` renders calm limited UI; both leave `ready_card_views` unchanged. |
-| Download/share count is below `60`                                                      | Increment the matching action row and return a truthful placeholder `allowed` response.                                                                   |
+| Download/share count is below `60`                                                      | Increment the matching action row and return a truthful `allowed` response for the requested action.                                                      |
 | Download/share count has reached `60`                                                   | Return `429 { error: "ready_card_limited" }` with calm copy.                                                                                              |
 | Same context reaches the next fixed hourly window                                       | Create/consume a new window row and allow the action again.                                                                                               |
 | Request body to `/api/card-action` is missing, malformed JSON, or an unsupported action | Return `400 { error: "invalid_card_action" }` with safe copy and do not consume any quota.                                                                |
@@ -526,7 +526,7 @@ type ReadyCardLimitErrorResponse = {
 - Good: a ready-card selection failure rolls back the refresh quota consume because both happen in one immediate transaction.
 - Good: spoofed `x-forwarded-for` values do not create fresh quota windows for the same anonymous cookie.
 - Good: expired rate-limit windows older than the retention horizon are pruned during consume.
-- Good: download/share placeholder button clicks call `/api/card-action`, are counted separately, and still say the real PNG/share capabilities are future slices.
+- Good: download/share button clicks call `/api/card-action`, are counted separately, and client code proceeds only after the allowed response echoes the requested action.
 - Good: rate-limit rows contain action names, hashed context keys, window starts, and counts only.
 - Base: an invalid `/api/card-action` body returns a safe `400` without consuming quota.
 - Bad: using raw IP-only keys; shared networks would collide and the issue's Cookie-plus-IP requirement would be unmet.
@@ -549,7 +549,7 @@ For changes to this path, add or update behavior tests that assert:
 - `/` renders calm homepage limit feedback at the refresh threshold and does not select/record another card.
 - `POST /api/card-action` allows, blocks, resets, and safely rejects invalid action bodies.
 - Browser-visible refresh limit keeps the current 图文卡片 and announces calm copy.
-- Browser-visible download/share allowed states keep truthful placeholder copy, and blocked states show calm limit copy.
+- Browser-visible download/share allowed states keep truthful capability copy, and blocked states show calm limit copy.
 - Tests should derive limit counts from `rateLimitConfigs` instead of hardcoding `120` or `60`.
 - `pnpm test:rate-limit`, `pnpm db:setup`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
 

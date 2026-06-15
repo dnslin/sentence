@@ -28,7 +28,7 @@ Use the domain language from `CONTEXT.md` consistently:
 - **刷新生成**: replaces the current card during the visit; it does not imply accounts, saved history, posting, or collections.
 - **非署名绘本风**: describe visual traits, not a named living artist style.
 
-Current public copy should stay truthful: refresh/download/share are still placeholder capabilities in the mock UI unless a later slice implements real behavior.
+Current public copy should stay truthful: refresh, download, and share should only claim capabilities that their completed slices actually implement.
 
 ## Architecture overview
 
@@ -38,7 +38,7 @@ Current public copy should stay truthful: refresh/download/share are still place
   - `lib/db/` owns the local SQLite schema/client, with WAL enabled at runtime.
   - `lib/cards/` owns the ready-card DTO, repository mapping, and stable seed data.
   - `app/api/ready-card/route.ts` exposes the public `{ card: ... }` ready-card API.
-  - `HomeCardExperience` is the client state boundary for placeholder action announcements.
+  - `HomeCardExperience` is the client state boundary for refresh, PNG download, Web Share fallback, and action announcements.
   - `QuietGalleryCard` is the reusable visual card renderer for the current quiet-gallery direction.
 - `/prototype` is a throwaway comparison route for three UI directions: `quiet-gallery`, `immersive-stage`, and `paper-desk`.
   - Query handling is client-side via `useSearchParams().getAll("variant")` inside a `Suspense` boundary so the route can remain static.

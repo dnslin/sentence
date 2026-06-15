@@ -6,6 +6,12 @@ import { Button } from "@/components/ui/button"
 import { downloadBlob } from "@/lib/card-export/download"
 import { exportReadyCardToPng } from "@/lib/card-export/png"
 import {
+  canShareReadyCardFile,
+  createReadyCardSharePayload,
+  isShareCancellation,
+  shareReadyCardFile,
+} from "@/lib/card-export/share"
+import {
   isCardActionResponse,
   isReadyCardErrorResponse,
   isReadyCardLimitErrorResponse,
@@ -30,6 +36,13 @@ const downloadSuccessAnnouncement =
   "PNG 已准备好，浏览器会开始下载这张图文卡片。"
 const downloadFailureAnnouncement =
   "PNG 暂时没有准备成功，当前图文卡片已保留。请稍后再试。"
+const shareSuccessAnnouncement =
+  "已打开系统分享，图文卡片 PNG 已交给浏览器处理。"
+const shareFallbackDownloadAnnouncement =
+  "当前浏览器不支持直接分享文件，PNG 会开始下载。"
+const shareFailureAnnouncement =
+  "分享暂时没有完成，当前图文卡片已保留。请稍后再试。"
+const shareCancelledAnnouncement = "已取消分享，当前图文卡片已保留。"
 
 type Announcement = {
   text: string
@@ -128,24 +141,45 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
       if (!isCardActionResponse(body) || body.action !== action)
         throw new Error("invalid action response")
 
-      if (action === "download") {
-        if (!cardRef.current) throw new Error("missing card export node")
+      if (!cardRef.current) throw new Error("missing card export node")
 
-        const exportedCard = await exportReadyCardToPng(
-          cardRef.current,
-          currentCard
-        )
+      const exportedCard = await exportReadyCardToPng(
+        cardRef.current,
+        currentCard
+      )
+
+      if (action === "download") {
         downloadBlob(exportedCard.blob, exportedCard.fileName)
         announce(downloadSuccessAnnouncement)
         return
       }
 
-      announce(body.message)
+      const sharePayload = createReadyCardSharePayload(exportedCard)
+
+      if (!canShareReadyCardFile(sharePayload)) {
+        downloadBlob(exportedCard.blob, exportedCard.fileName)
+        announce(shareFallbackDownloadAnnouncement)
+        return
+      }
+
+      try {
+        await shareReadyCardFile(sharePayload)
+      } catch (error) {
+        // A user dismissing the share sheet (AbortError) is a calm cancel, not
+        // a failure; do not fall back to download and do not suggest a retry.
+        if (isShareCancellation(error)) {
+          announce(shareCancelledAnnouncement)
+          return
+        }
+        throw error
+      }
+
+      announce(shareSuccessAnnouncement)
     } catch {
       announce(
         action === "download"
           ? downloadFailureAnnouncement
-          : cardActionFailureAnnouncement
+          : shareFailureAnnouncement
       )
     } finally {
       setPendingCardAction(null)
