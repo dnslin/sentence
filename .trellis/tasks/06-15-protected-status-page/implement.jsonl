@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库读写约定：Drizzle 投影、client 开关、计数口径、sanitize、不暴露 secret/路径的契约"}
+{"file": "lib/cards/ready-card-repository.ts", "reason": "countPublicReadyCards 复用来源，ready 计数口径"}
+{"file": "lib/generation/generation-attempt-repository.ts", "reason": "generation_attempts 状态枚举与 sanitizeErrorMessage 复用"}
+{"file": "lib/generation/generated-illustration-storage.ts", "reason": "resolveGeneratedIllustrationRoot / isValidGeneratedIllustrationFilename 复用，存储指标口径"}
+{"file": "lib/db/client.ts", "reason": "createDatabaseClient / resolveDatabasePath 复用，连接生命周期"}
+{"file": "app/api/ready-card/route.ts", "reason": "路由模式参照：runtime/dynamic、NextResponse.json<Type>、finally close"}
+{"file": "node-tests/ready-pool-worker.test.ts", "reason": "node:test 模式参照：临时 SQLite、迁移导入、种子 helper"}
