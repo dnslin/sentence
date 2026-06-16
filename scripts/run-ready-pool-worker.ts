@@ -73,11 +73,16 @@ if (hasConfig) {
       generateReadyCard: createProductionReadyPoolGenerator(client),
       stopSignal,
       sleep: createInterruptibleSleep(sleepAbortController.signal),
+      onProgress(progress) {
+        console.log(JSON.stringify(progress))
+      },
       onSummary(summary) {
-        console.log(JSON.stringify(summary))
+        console.log(
+          JSON.stringify({ event: "replenishment_summary", ...summary })
+        )
       },
       onError(error) {
-        console.error(JSON.stringify(error))
+        console.error(JSON.stringify({ event: "worker_error", ...error }))
       },
     })
   } finally {

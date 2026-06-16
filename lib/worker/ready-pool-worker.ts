@@ -25,6 +25,36 @@ export type ReadyPoolErrorSummary = {
   message: string
 }
 
+export type ReadyPoolProgressEvent =
+  | {
+      event: "generation_started"
+      inventory: number
+      remainingToTarget: number
+      threshold: typeof readyPoolReplenishThreshold
+      target: typeof readyPoolTargetInventory
+      dailyCap: typeof readyPoolDailyGenerationCap
+      reservedCount: number
+    }
+  | {
+      event: "generation_finished"
+      status: XaiReadyCardGenerationResult["status"] | "exception"
+      attemptId: string | null
+      cardId: string | null
+      errorStage: string | null
+      errorMessage: string | null
+      inventoryBefore: number
+      inventoryAfter: number
+      inventoryGrowth: number
+      remainingToTarget: number
+      readyInventoryGrowthCount: number
+      failedCount: number
+      reservedCount: number
+    }
+
+export type ReadyPoolProgressReporter = (
+  progress: ReadyPoolProgressEvent
+) => void
+
 export type ReadyPoolReplenishmentSummary = {
   startedInventory: number
   endingInventory: number
@@ -88,6 +118,39 @@ function createErrorSummary(
   }
 }
 
+function createGenerationFinishedProgress(input: {
+  result: XaiReadyCardGenerationResult | null
+  error: ReadyPoolErrorSummary | null
+  inventoryBefore: number
+  inventoryAfter: number
+  inventoryGrowth: number
+  summary: ReadyPoolReplenishmentSummary
+}): ReadyPoolProgressEvent {
+  const failedResult = input.result?.status === "failed" ? input.result : null
+  const readyResult = input.result?.status === "ready" ? input.result : null
+
+  return {
+    event: "generation_finished",
+    status: input.error ? "exception" : (input.result?.status ?? "exception"),
+    attemptId: input.result?.attemptId ?? null,
+    cardId: readyResult?.card.id ?? null,
+    errorStage: input.error?.stage ?? failedResult?.error.stage ?? null,
+    errorMessage:
+      input.error?.message ??
+      (failedResult ? sanitizeErrorMessage(failedResult.error.message) : null),
+    inventoryBefore: input.inventoryBefore,
+    inventoryAfter: input.inventoryAfter,
+    inventoryGrowth: input.inventoryGrowth,
+    remainingToTarget: Math.max(
+      0,
+      readyPoolTargetInventory - input.inventoryAfter
+    ),
+    readyInventoryGrowthCount: input.summary.readyInventoryGrowthCount,
+    failedCount: input.summary.failedCount,
+    reservedCount: input.summary.reservedCount,
+  }
+}
+
 function reportError(
   reporter: ReadyPoolErrorReporter | undefined,
   error: ReadyPoolErrorSummary
@@ -119,6 +182,7 @@ export async function replenishReadyPoolOnce(input: {
   generateReadyCard: ReadyPoolGenerator
   now?: ReadyPoolClock
   stopSignal?: ReadyPoolStopSignal
+  onProgress?: ReadyPoolProgressReporter
 }): Promise<ReadyPoolReplenishmentSummary> {
   const now = input.now ?? (() => new Date())
   const startedInventory = await countReadyPoolInventory(input.client)
@@ -151,21 +215,51 @@ export async function replenishReadyPoolOnce(input: {
     }
 
     summary.reservedCount += 1
+    const inventoryBeforeGeneration = inventory
+
+    input.onProgress?.({
+      event: "generation_started",
+      inventory: inventoryBeforeGeneration,
+      remainingToTarget: Math.max(
+        0,
+        readyPoolTargetInventory - inventoryBeforeGeneration
+      ),
+      threshold: readyPoolReplenishThreshold,
+      target: readyPoolTargetInventory,
+      dailyCap: readyPoolDailyGenerationCap,
+      reservedCount: summary.reservedCount,
+    })
+
+    let result: XaiReadyCardGenerationResult | null = null
+    let generationError: ReadyPoolErrorSummary | null = null
 
     try {
-      const result = await input.generateReadyCard()
+      result = await input.generateReadyCard()
       if (result.status === "failed") {
         summary.failedCount += 1
       }
     } catch (error) {
       summary.failedCount += 1
-      summary.errors.push(createErrorSummary("generation_exception", error))
+      generationError = createErrorSummary("generation_exception", error)
+      summary.errors.push(generationError)
     }
 
     const nextInventory = await countReadyPoolInventory(input.client)
-    summary.readyInventoryGrowthCount += Math.max(0, nextInventory - inventory)
+    const inventoryGrowth = Math.max(0, nextInventory - inventory)
+    summary.readyInventoryGrowthCount += inventoryGrowth
     inventory = nextInventory
     summary.endingInventory = inventory
+
+    input.onProgress?.(
+      createGenerationFinishedProgress({
+        result,
+        error: generationError,
+        inventoryBefore: inventoryBeforeGeneration,
+        inventoryAfter: nextInventory,
+        inventoryGrowth,
+        summary,
+      })
+    )
   }
 
   return summary
@@ -177,6 +271,7 @@ export async function runReadyPoolWorkerLoop(input: {
   now?: ReadyPoolClock
   sleep?: ReadyPoolSleep
   stopSignal?: ReadyPoolStopSignal
+  onProgress?: ReadyPoolProgressReporter
   onSummary?: (summary: ReadyPoolReplenishmentSummary) => void
   onError?: ReadyPoolErrorReporter
 }) {
@@ -194,6 +289,7 @@ export async function runReadyPoolWorkerLoop(input: {
         generateReadyCard,
         now: input.now,
         stopSignal: input.stopSignal,
+        onProgress: input.onProgress,
       })
 
       try {
