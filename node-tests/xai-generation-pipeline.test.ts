@@ -208,6 +208,40 @@ describe("xAI illustration generation pipeline", () => {
     assert.equal(row?.errorMessage, null)
   })
 
+  test("accepts valid JPEG base64 with missing MIME and records inferred metadata", async () => {
+    const imageBytes = jpegBytes
+    const imageBase64 = createImageBase64(imageBytes)
+    const imageSha256 = createHash("sha256").update(imageBytes).digest("hex")
+    const xaiClient: XaiGenerationClient = {
+      async rewriteIllustrationPrompt() {
+        return { content: "A quiet watercolor scene." }
+      },
+      async generateBase64Image() {
+        return { b64Json: imageBase64, mimeType: null }
+      },
+    }
+
+    const result = await generateXaiIllustrationForHitokotoSentence({
+      client,
+      fetchFn: createControlledFetch(baseHitokotoResponse),
+      xaiClient,
+    })
+
+    assert.equal(result.status, "image_generated")
+    assert.equal(result.image.mimeType, "image/jpeg")
+    assert.equal(result.image.byteLength, imageBytes.length)
+    assert.equal(result.image.sha256, imageSha256)
+    assert.deepEqual(result.image.bytes, imageBytes)
+
+    const row = await readAttempt(result.attemptId)
+    assert.equal(row?.status, "image_generated")
+    assert.equal(row?.imageMimeType, "image/jpeg")
+    assert.equal(row?.imageByteLength, imageBytes.length)
+    assert.equal(row?.imageSha256, imageSha256)
+    assert.equal(row?.imageGenerationAttempts, 1)
+    assert.equal(row?.errorStage, null)
+  })
+
   test("falls back to a deterministic prompt when prompt rewriting is unusable", async () => {
     const imageBase64 = createImageBase64(webpBytes)
     const prompts: string[] = []
@@ -334,8 +368,8 @@ describe("xAI illustration generation pipeline", () => {
     assert.equal(row?.errorStage, null)
   })
 
-  test("records image_validation when valid base64 text does not match the image MIME", async () => {
-    const textBase64 = Buffer.from("valid base64 text, not a png").toString(
+  test("records image_validation when valid base64 text has missing MIME", async () => {
+    const textBase64 = Buffer.from("valid base64 text, not an image").toString(
       "base64"
     )
     const xaiClient: XaiGenerationClient = {
@@ -343,7 +377,7 @@ describe("xAI illustration generation pipeline", () => {
         return { content: "A quiet watercolor scene." }
       },
       async generateBase64Image() {
-        return { b64Json: textBase64, mimeType: "image/png" }
+        return { b64Json: textBase64, mimeType: null }
       },
     }
 
@@ -355,12 +389,15 @@ describe("xAI illustration generation pipeline", () => {
 
     assert.equal(result.status, "failed")
     assert.equal(result.error.stage, "image_validation")
-    assert.match(result.error.message, /image\/png/)
+    assert.match(result.error.message, /supported image/i)
     const row = await readAttempt(result.attemptId)
     assert.equal(row?.status, "failed")
     assert.equal(row?.imageGenerationAttempts, 2)
+    assert.equal(row?.imageMimeType, null)
+    assert.equal(row?.imageByteLength, null)
+    assert.equal(row?.imageSha256, null)
     assert.equal(row?.errorStage, "image_validation")
-    assert.match(row?.errorMessage ?? "", /image\/png/)
+    assert.match(row?.errorMessage ?? "", /supported image/i)
   })
 
   test("records failed state when generated base64 stays invalid after retry", async () => {
@@ -675,6 +712,27 @@ describe("xAI configuration and smoke safety", () => {
 
     assert.deepEqual(image.bytes, jpegBytes)
     assert.equal(image.byteLength, jpegBytes.length)
+  })
+
+  test("infers image MIME when provider MIME is unsupported", () => {
+    const image = normalizeGeneratedBase64Image({
+      b64Json: webpBytes.toString("base64"),
+      mimeType: "application/octet-stream",
+    })
+
+    assert.equal(image.mimeType, "image/webp")
+    assert.deepEqual(image.bytes, webpBytes)
+  })
+
+  test("rejects supported provider MIME that conflicts with image bytes", () => {
+    assert.throws(
+      () =>
+        normalizeGeneratedBase64Image({
+          b64Json: jpegBytes.toString("base64"),
+          mimeType: "image/png",
+        }),
+      /image\/png/
+    )
   })
 
   test("redacts configured and secret-shaped tokens from persisted errors", () => {

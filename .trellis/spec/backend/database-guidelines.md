@@ -869,7 +869,8 @@ generation_attempts(
 - Prompt rewriting uses `grok-4.3`; unusable rewrite output or rewrite errors fall back to the deterministic non-attributed picture-book prompt.
 - Prompt constraints must describe visual traits and must not name or imply imitation of living artists.
 - Image generation uses `grok-imagine-image-quality` and the base64-only request contract above.
-- Normalize image output at one boundary: `b64_json` must decode to non-empty bytes, MIME type must be a supported image MIME or default safely, and SHA-256/byte length are computed from decoded bytes.
+- Normalize image output at one boundary: `b64_json` must decode to non-empty bytes, decoded bytes must identify PNG, JPEG, or WebP, and SHA-256/byte length are computed from decoded bytes.
+- When provider MIME is absent or unsupported, record the supported MIME inferred from decoded image bytes. When provider MIME is supported but conflicts with the decoded byte signature, reject the response as `image_validation`.
 - Accept valid base64 with or without padding, but reject empty or structurally invalid base64.
 - Never store raw base64 image blobs in SQLite. Store only MIME type, decoded byte length, SHA-256 digest, prompt/status, and sanitized error metadata.
 - Image generation SDK failures and invalid base64 responses retry once. After retry exhaustion, persist `status='failed'` with `error_stage` and sanitized `error_message`.

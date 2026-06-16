@@ -38,11 +38,11 @@ function normalizeBase64Payload(value: string | null) {
   return compact.padEnd(compact.length + paddingLength, "=")
 }
 
-function normalizeMimeType(value: string | null) {
-  if (typeof value !== "string") return "image/png"
+function normalizeSupportedMimeType(value: string | null) {
+  if (typeof value !== "string") return null
 
   const normalized = value.trim().toLowerCase()
-  return supportedImageMimeTypes.has(normalized) ? normalized : "image/png"
+  return supportedImageMimeTypes.has(normalized) ? normalized : null
 }
 
 function hasPngSignature(bytes: Buffer) {
@@ -77,17 +77,32 @@ function hasWebpSignature(bytes: Buffer) {
   )
 }
 
-function validateImageBytesForMimeType(bytes: Buffer, mimeType: string) {
-  const isValid =
-    (mimeType === "image/png" && hasPngSignature(bytes)) ||
-    (mimeType === "image/jpeg" && hasJpegSignature(bytes)) ||
-    (mimeType === "image/webp" && hasWebpSignature(bytes))
+function detectSupportedImageMimeType(bytes: Buffer) {
+  if (hasPngSignature(bytes)) return "image/png"
+  if (hasJpegSignature(bytes)) return "image/jpeg"
+  if (hasWebpSignature(bytes)) return "image/webp"
+  return null
+}
 
-  if (!isValid) {
+function resolveImageMimeType(input: {
+  bytes: Buffer
+  providerMimeType: string | null
+}) {
+  const detectedMimeType = detectSupportedImageMimeType(input.bytes)
+  if (detectedMimeType === null) {
     throw new GeneratedImageNormalizationError(
-      `Generated image bytes do not match ${mimeType}`
+      "Generated image bytes do not match a supported image format"
     )
   }
+
+  const providerMimeType = normalizeSupportedMimeType(input.providerMimeType)
+  if (providerMimeType !== null && providerMimeType !== detectedMimeType) {
+    throw new GeneratedImageNormalizationError(
+      `Generated image bytes do not match ${providerMimeType}`
+    )
+  }
+
+  return detectedMimeType
 }
 
 export function normalizeGeneratedBase64Image(input: {
@@ -103,8 +118,10 @@ export function normalizeGeneratedBase64Image(input: {
     )
   }
 
-  const mimeType = normalizeMimeType(input.mimeType)
-  validateImageBytesForMimeType(bytes, mimeType)
+  const mimeType = resolveImageMimeType({
+    bytes,
+    providerMimeType: input.mimeType,
+  })
 
   return {
     bytes,
