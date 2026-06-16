@@ -28,6 +28,7 @@
     "smoke:xai": "tsx scripts/smoke-xai-generation.ts"
   },
   "dependencies": {
+    "@next/env": "16.2.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",

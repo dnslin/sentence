@@ -1,5 +1,13 @@
+import { createRequire } from "node:module"
+
 import { createDatabaseClient } from "@/lib/db/client"
 import { loadXaiConfig } from "@/lib/generation/xai-config"
+
+const { loadEnvConfig } = createRequire(import.meta.url)(
+  "@next/env"
+) as typeof import("@next/env")
+
+loadEnvConfig(process.cwd())
 import {
   createProductionReadyPoolGenerator,
   runReadyPoolWorkerLoop,

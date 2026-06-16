@@ -1,7 +1,14 @@
 import { mkdir, writeFile } from "node:fs/promises"
+import { createRequire } from "node:module"
 import { join } from "node:path"
 
 import { createDatabaseClient } from "@/lib/db/client"
+
+const { loadEnvConfig } = createRequire(import.meta.url)(
+  "@next/env"
+) as typeof import("@next/env")
+
+loadEnvConfig(process.cwd())
 import {
   recordGenerationFailed,
   sanitizeErrorMessage,
