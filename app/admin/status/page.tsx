@@ -1,7 +1,6 @@
-import {
-  resolveAdminStatusToken,
-  verifyAdminStatusToken,
-} from "@/lib/admin/admin-auth"
+import { headers } from "next/headers"
+
+import { authorizeAdminStatus } from "@/lib/admin/admin-auth"
 import { collectOperationalStatus } from "@/lib/admin/operational-status"
 import { createDatabaseClient } from "@/lib/db/client"
 
@@ -13,9 +12,11 @@ import {
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function readToken(value: string | string[] | undefined): string | null {
-  if (Array.isArray(value)) return value[0]?.trim() || null
-  return value?.trim() || null
+function readQueryToken(
+  value: string | string[] | undefined
+): string | null {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value ?? null
 }
 
 export default async function AdminStatusPage({
@@ -23,10 +24,10 @@ export default async function AdminStatusPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const params = await searchParams
-  const auth = verifyAdminStatusToken({
-    presentedToken: readToken(params.token),
-    configuredToken: resolveAdminStatusToken(),
+  const [params, headersList] = await Promise.all([searchParams, headers()])
+  const auth = authorizeAdminStatus({
+    authorizationHeader: headersList.get("authorization"),
+    queryToken: readQueryToken(params.token),
   })
 
   if (!auth.authorized) {

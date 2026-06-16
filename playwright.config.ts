@@ -1,7 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
 
+import { e2eAdminStatusToken } from "./tests/admin-status-token"
+
 const testDatabasePath = "test-data/e2e/juhua.sqlite"
-const adminStatusToken = "e2e-admin-status-token"
 
 export default defineConfig({
   testDir: "./tests",
@@ -19,7 +20,7 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       JUHUA_DATABASE_PATH: testDatabasePath,
-      JUHUA_ADMIN_STATUS_TOKEN: adminStatusToken,
+      JUHUA_ADMIN_STATUS_TOKEN: e2eAdminStatusToken,
     },
   },
   projects: [

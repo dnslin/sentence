@@ -2,8 +2,7 @@ import { expect, test } from "@playwright/test"
 
 import { isAdminStatusResponse } from "@/lib/admin/admin-status-contract"
 
-// Mirrors playwright.config.ts webServer.env.JUHUA_ADMIN_STATUS_TOKEN.
-const adminStatusToken = "e2e-admin-status-token"
+import { e2eAdminStatusToken as adminStatusToken } from "./admin-status-token"
 
 test("denies the status page without a valid admin token", async ({ page }) => {
   await page.goto("/admin/status")

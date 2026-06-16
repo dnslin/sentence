@@ -148,14 +148,21 @@ export async function collectStorageIndicators(
   const listIllustrationFiles =
     probe.listIllustrationFiles ?? defaultListIllustrationFiles
 
-  const databaseBytes = await statBytes(databasePath)
+  // WAL mode keeps uncommitted/uncheckpointed pages in sibling files, so the
+  // main .sqlite size alone understates the on-disk footprint. Sum the main file
+  // plus its -wal/-shm siblings; existence is driven by the main file only.
+  const [mainBytes, walBytes, shmBytes, entries] = await Promise.all([
+    statBytes(databasePath),
+    statBytes(`${databasePath}-wal`),
+    statBytes(`${databasePath}-shm`),
+    listIllustrationFiles(illustrationRoot),
+  ])
   const database: DatabaseStorageIndicator = {
     kind: "database",
-    exists: databaseBytes !== null,
-    byteLength: databaseBytes ?? 0,
+    exists: mainBytes !== null,
+    byteLength: (mainBytes ?? 0) + (walBytes ?? 0) + (shmBytes ?? 0),
   }
 
-  const entries = await listIllustrationFiles(illustrationRoot)
   const generatedIllustrations: GeneratedIllustrationsStorageIndicator =
     await summarizeIllustrationDirectory({
       entries,
@@ -184,13 +191,15 @@ async function summarizeIllustrationDirectory(input: {
     isValidGeneratedIllustrationFilename
   )
 
-  let byteLength = 0
-  for (const filename of validFilenames) {
-    const fileBytes = await input.statBytes(
-      join(input.illustrationRoot, filename)
+  const fileByteLengths = await Promise.all(
+    validFilenames.map((filename) =>
+      input.statBytes(join(input.illustrationRoot, filename))
     )
-    byteLength += fileBytes ?? 0
-  }
+  )
+  const byteLength = fileByteLengths.reduce<number>(
+    (total, bytes) => total + (bytes ?? 0),
+    0
+  )
 
   return {
     kind: "generated_illustrations",

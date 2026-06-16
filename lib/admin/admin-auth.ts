@@ -54,24 +54,56 @@ export function verifyAdminStatusToken(input: {
 
 const bearerSchemePattern = /^Bearer\s+(.+)$/i
 
-export function extractPresentedAdminToken(request: Request): string | null {
-  const authorizationHeader = request.headers.get("authorization")
-  if (authorizationHeader) {
-    const match = bearerSchemePattern.exec(authorizationHeader.trim())
+// Single source of truth for picking the presented token: Authorization Bearer
+// header takes precedence over the `?token=` query value. Both the Request-based
+// API path and the Server Component page route through this so they cannot drift.
+//
+// Security note: the query-token fallback is a deliberate convenience for browser
+// page access (`/admin/status?token=...`). Query strings can land in proxy/access
+// logs, browser history, and Referer headers, so the Bearer header is preferred
+// where the caller controls headers.
+export function selectPresentedAdminToken(input: {
+  authorizationHeader: string | null
+  queryToken: string | null
+}): string | null {
+  if (input.authorizationHeader) {
+    const match = bearerSchemePattern.exec(input.authorizationHeader.trim())
     const headerToken = match?.[1]?.trim()
     if (headerToken) return headerToken
   }
 
-  const queryToken = new URL(request.url).searchParams.get("token")?.trim()
+  const queryToken = input.queryToken?.trim()
   return queryToken ? queryToken : null
+}
+
+export function extractPresentedAdminToken(request: Request): string | null {
+  return selectPresentedAdminToken({
+    authorizationHeader: request.headers.get("authorization"),
+    queryToken: new URL(request.url).searchParams.get("token"),
+  })
+}
+
+export function authorizeAdminStatus(input: {
+  authorizationHeader: string | null
+  queryToken: string | null
+  env?: AdminStatusEnv
+}): AdminAuthResult {
+  return verifyAdminStatusToken({
+    presentedToken: selectPresentedAdminToken({
+      authorizationHeader: input.authorizationHeader,
+      queryToken: input.queryToken,
+    }),
+    configuredToken: resolveAdminStatusToken(input.env),
+  })
 }
 
 export function authorizeAdminStatusRequest(input: {
   request: Request
   env?: AdminStatusEnv
 }): AdminAuthResult {
-  return verifyAdminStatusToken({
-    presentedToken: extractPresentedAdminToken(input.request),
-    configuredToken: resolveAdminStatusToken(input.env),
+  return authorizeAdminStatus({
+    authorizationHeader: input.request.headers.get("authorization"),
+    queryToken: new URL(input.request.url).searchParams.get("token"),
+    env: input.env,
   })
 }

@@ -8,9 +8,11 @@ import { join } from "node:path"
 import { createDatabaseClient } from "@/lib/db/client"
 import { cards, generationAttempts, sentences } from "@/lib/db/schema"
 import {
+  authorizeAdminStatus,
   authorizeAdminStatusRequest,
   extractPresentedAdminToken,
   resolveAdminStatusToken,
+  selectPresentedAdminToken,
   verifyAdminStatusToken,
 } from "@/lib/admin/admin-auth"
 import {
@@ -126,6 +128,19 @@ describe("admin status auth", () => {
     assert.deepEqual(result, { authorized: false, reason: "not_configured" })
   })
 
+  test("treats a missing or blank configured token as not configured", () => {
+    assert.equal(resolveAdminStatusToken({}), null)
+    assert.equal(resolveAdminStatusToken({ JUHUA_ADMIN_STATUS_TOKEN: "" }), null)
+    assert.equal(
+      resolveAdminStatusToken({ JUHUA_ADMIN_STATUS_TOKEN: "   " }),
+      null
+    )
+    assert.equal(
+      resolveAdminStatusToken({ JUHUA_ADMIN_STATUS_TOKEN: "  owner-secret  " }),
+      "owner-secret"
+    )
+  })
+
   test("denies access when a token is configured but none is presented", () => {
     for (const presentedToken of [null, "", "   "]) {
       const result = verifyAdminStatusToken({
@@ -233,6 +248,60 @@ describe("admin status auth", () => {
       env: {},
     })
     assert.deepEqual(denied, { authorized: false, reason: "not_configured" })
+  })
+
+  test("selectPresentedAdminToken prefers the Bearer header over the query token", () => {
+    assert.equal(
+      selectPresentedAdminToken({
+        authorizationHeader: "Bearer from-header",
+        queryToken: "from-query",
+      }),
+      "from-header"
+    )
+    assert.equal(
+      selectPresentedAdminToken({
+        authorizationHeader: null,
+        queryToken: "  from-query  ",
+      }),
+      "from-query"
+    )
+    assert.equal(
+      selectPresentedAdminToken({
+        authorizationHeader: "Basic abc",
+        queryToken: "   ",
+      }),
+      null
+    )
+  })
+
+  test("authorizeAdminStatus shares the page and API decision path including Bearer headers", () => {
+    const env = { JUHUA_ADMIN_STATUS_TOKEN: "owner-secret" }
+
+    // The page path can authorize via an Authorization header, not only ?token=.
+    assert.deepEqual(
+      authorizeAdminStatus({
+        authorizationHeader: "Bearer owner-secret",
+        queryToken: null,
+        env,
+      }),
+      { authorized: true }
+    )
+    assert.deepEqual(
+      authorizeAdminStatus({
+        authorizationHeader: null,
+        queryToken: "owner-secret",
+        env,
+      }),
+      { authorized: true }
+    )
+    assert.deepEqual(
+      authorizeAdminStatus({
+        authorizationHeader: null,
+        queryToken: "wrong",
+        env,
+      }),
+      { authorized: false, reason: "invalid_token" }
+    )
   })
 })
 
@@ -395,6 +464,40 @@ describe("storage indicators", () => {
       fileCount: 0,
       byteLength: 0,
     })
+  })
+
+  test("includes WAL and SHM sibling files in the database byte length", async () => {
+    const storage = await collectStorageIndicators({
+      resolveDatabasePath: () => "/data/juhua.sqlite",
+      resolveIllustrationRoot: () => "/data/generated-illustrations",
+      statBytes: async (path) => {
+        if (path === "/data/juhua.sqlite") return 4096
+        if (path === "/data/juhua.sqlite-wal") return 8192
+        if (path === "/data/juhua.sqlite-shm") return 32768
+        return null
+      },
+      listIllustrationFiles: async () => [],
+    })
+
+    assert.deepEqual(storage.database, {
+      kind: "database",
+      exists: true,
+      byteLength: 4096 + 8192 + 32768,
+    })
+  })
+
+  test("reports the database as missing even when a stale WAL sibling lingers", async () => {
+    const storage = await collectStorageIndicators({
+      resolveDatabasePath: () => "/data/juhua.sqlite",
+      resolveIllustrationRoot: () => "/data/generated-illustrations",
+      statBytes: async (path) =>
+        path === "/data/juhua.sqlite-wal" ? 8192 : null,
+      listIllustrationFiles: async () => null,
+    })
+
+    // Existence is driven by the main file; a lone WAL sibling does not flip it.
+    assert.equal(storage.database.exists, false)
+    assert.equal(storage.database.byteLength, 8192)
   })
 })
 
