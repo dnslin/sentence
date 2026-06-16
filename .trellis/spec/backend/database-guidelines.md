@@ -1316,3 +1316,146 @@ await upsertGeneratedReadyCard({
   illustrationUrl: illustration.publicPath,
 })
 ```
+
+---
+
+## Scenario: Token-protected operational status page and API
+
+### 1. Scope / Trigger
+
+Use this contract when a change touches the owner-only operational status page (`/admin/status`), the status API (`/api/admin/status`), admin token authentication, or the operational status data collector.
+
+This path is owner-facing and read-only:
+
+```text
+Bearer header or ?token= → admin auth (constant-time) → operational status collector (counts + recent errors + storage) → /api/admin/status JSON / /admin/status page
+```
+
+### 2. Signatures
+
+**Focused test command**
+
+```json
+{
+  "test:admin-status": "node --import tsx --test node-tests/admin-status.test.ts"
+}
+```
+
+**Environment key**
+
+- `JUHUA_ADMIN_STATUS_TOKEN?: string` — owner admin token. Missing or blank means the status endpoints are unconfigured and must deny all access.
+
+**Auth boundary**
+
+```typescript
+type AdminAuthResult =
+  | { authorized: true }
+  | { authorized: false; reason: "not_configured" | "missing_token" | "invalid_token" }
+
+function resolveAdminStatusToken(env?: Record<string, string | undefined>): string | null
+function verifyAdminStatusToken(input: { presentedToken: string | null; configuredToken: string | null }): AdminAuthResult
+function extractPresentedAdminToken(request: Request): string | null
+function authorizeAdminStatusRequest(input: { request: Request; env?: Record<string, string | undefined> }): AdminAuthResult
+```
+
+**Status collector**
+
+```typescript
+type OperationalCounts = { ready: number; failed: number; inProgress: number }
+type RecentGenerationError = { attemptId: string; stage: string | null; message: string | null; occurredAt: string }
+async function collectOperationalStatus(input: { client: DatabaseClient; now?: () => Date; recentErrorLimit?: number; storage?: StorageProbe }): Promise<OperationalStatus>
+```
+
+**API**
+
+- `GET /api/admin/status`
+- Unauthorized: HTTP `401` `{ error: "admin_status_unauthorized"; message: string }` with `WWW-Authenticate: Bearer`.
+- Authorized: HTTP `200` `{ status: OperationalStatus }`.
+
+### 3. Contracts
+
+- When `JUHUA_ADMIN_STATUS_TOKEN` is missing or blank, every status request is denied (`not_configured`). Never default to open access because the server lacks a token.
+- Token comparison must be constant-time. Hash both sides to a fixed-length digest before `crypto.timingSafeEqual` so token length cannot leak through an early return or a length-mismatch throw.
+- The API accepts `Authorization: Bearer <token>`; the browser page also accepts `?token=<token>`. Header takes precedence over query.
+- Denial responses must not echo the presented token, reveal the configured token, or include any operational data (counts, errors, storage, timestamps).
+- The API must authorize before opening a `DatabaseClient`; unauthorized requests must not touch SQLite. Authorized requests use the shared client and `finally { client.sqlite.close() }`.
+- Counts are database facts: `ready` reuses `countPublicReadyCards` (public eligibility), `failed` is `generation_attempts.status='failed'`, `inProgress` is `generation_attempts.status IN ('started','prompt_fallback')`. `image_generated` is neither failed nor in-progress for this view.
+- Recent errors expose only `stage`, `occurredAt`, and a re-`sanitizeErrorMessage`-d `message`. Never expose `prompt_text`, `image_sha256`, secrets, or bearer/sk-like tokens, even though persisted messages are already sanitized.
+- Storage indicators expose existence, byte size, and valid-`.webp` file count only. The operator payload must never contain absolute filesystem paths. File counting reuses `isValidGeneratedIllustrationFilename`.
+- The page and API share one auth decision path and one status collector. The page is a Server Component with no `"use client"`, so the token is verified server-side and never reaches the client bundle.
+- Both routes set `runtime = "nodejs"` and `dynamic = "force-dynamic"`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --------- | ----------------- |
+| `JUHUA_ADMIN_STATUS_TOKEN` missing/blank | Deny every request (`401` API, unauthorized page); never open access. |
+| No token presented | `401` `admin_status_unauthorized` with `WWW-Authenticate: Bearer`; page renders unauthorized view. |
+| Wrong token presented | `401`; constant-time comparison; no token echo. |
+| Valid Bearer header or `?token=` | `200` with `{ status }`; page renders counts/errors/storage. |
+| Header and query both present | Header wins. |
+| Unauthorized request | Do not open `DatabaseClient`; body carries no operational data. |
+| Failed attempt has a dirty error message | Re-sanitize before exposing; redact secret-like tokens. |
+| Database file or illustration directory missing | Report `exists: false` with zeroed metrics; no absolute path in payload. |
+
+### 5. Good/Base/Bad Cases
+
+- Good: with a configured token, `GET /api/admin/status` returns `200` with accurate `ready`/`failed`/`inProgress` counts and sanitized recent errors.
+- Good: a request with no token or a wrong token gets `401` and a body with no operational data.
+- Good: an unconfigured token env denies even a request that presents some token.
+- Base: storage indicators report existence/size/file-count without leaking absolute paths.
+- Bad: comparing tokens with `===` (timing side channel) or returning early on length mismatch.
+- Bad: defaulting to open access when the token env is unset.
+- Bad: exposing prompt text, image digests, secrets, or absolute filesystem paths in the operator payload.
+- Bad: opening a `DatabaseClient` before the auth check passes.
+
+### 6. Tests Required
+
+For changes to this path, add or update behavior tests that assert:
+
+- Unconfigured token env denies access regardless of presented token.
+- Missing/wrong token yields `401`; correct token (header or query) yields `200`.
+- Token comparison does not authorize a longer token that shares a prefix.
+- Counts match seeded ready cards and `generation_attempts` statuses (`inProgress` excludes `image_generated`).
+- Recent errors are failed-only, most-recent-first, limit-bounded, sanitized, and free of prompt text / digests.
+- Storage indicators count only valid `.webp` files and never include absolute paths.
+- Denied API responses contain no operational data and set `WWW-Authenticate: Bearer`.
+- `pnpm test:admin-status`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm test:e2e` pass.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+// Timing side channel + opens access when unconfigured.
+if (!configuredToken || presentedToken === configuredToken) return ok()
+```
+
+#### Correct
+
+```typescript
+if (configuredToken === null) return { authorized: false, reason: "not_configured" }
+const ok = timingSafeEqual(sha256(presentedToken), sha256(configuredToken))
+```
+
+#### Wrong
+
+```typescript
+// Authorizes (and opens SQLite) before checking the token.
+const client = createDatabaseClient()
+const status = await collectOperationalStatus({ client })
+if (!authorized) return unauthorized()
+```
+
+#### Correct
+
+```typescript
+const auth = authorizeAdminStatusRequest({ request })
+if (!auth.authorized) return NextResponse.json(unauthorizedBody, { status: 401 })
+const client = createDatabaseClient()
+try {
+  return NextResponse.json({ status: await collectOperationalStatus({ client }) })
+} finally {
+  client.sqlite.close()
+}
+```
