@@ -510,7 +510,6 @@ test("refresh replaces the displayed sentence and illustration binding", async (
   await page.getByRole("button", { name: "再来一张" }).click()
   await apiResponse
 
-  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
   const updatedSentence = await page
     .getByRole("article", { name: "图文卡片预览" })
     .getByText(/^“.*”$/)
@@ -552,13 +551,13 @@ test("shows loading transition and prevents duplicate refresh clicks", async ({
   const refreshButton = page.getByRole("button", { name: "再来一张" })
   await refreshButton.click()
 
-  await expect(page.getByRole("button", { name: "刷新生成中" })).toBeDisabled()
-  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "刷新中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "下载" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
   await expect(
     page.getByRole("article", { name: "图文卡片预览" })
   ).toHaveAttribute("aria-busy", "true")
-  await page.getByRole("button", { name: "刷新生成中" }).click({ force: true })
+  await page.getByRole("button", { name: "刷新中" }).click({ force: true })
   expect(requestCount).toBe(1)
 
   releaseResponse?.()
@@ -596,12 +595,10 @@ test("refresh failure keeps current card and allows retry", async ({
   await expect(page.getByText(initialSentence ?? "")).toBeVisible()
 
   await page.getByRole("button", { name: "再来一张" }).click()
-  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
-  const updatedSentence = await page
+  const sentence = page
     .getByRole("article", { name: "图文卡片预览" })
     .getByText(/^“.*”$/)
-    .textContent()
-  expect(updatedSentence).not.toBe(initialSentence)
+  await expect(sentence).not.toHaveText(initialSentence ?? "")
 })
 
 test("refresh empty-stock response keeps current card and allows retry", async ({
@@ -662,7 +659,7 @@ test("refresh limit response keeps current card and shows gentle copy", async ({
 
 async function downloadCurrentCard(page: Page) {
   const downloadPromise = page.waitForEvent("download")
-  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await page.getByRole("button", { name: "下载" }).click()
 
   return downloadPromise
 }
@@ -848,7 +845,7 @@ test("downloads the current card as a 1080x1350 PNG artifact", async ({
   )
   await expect(
     page.getByText("PNG 已准备好，浏览器会开始下载这张图文卡片。")
-  ).toBeVisible()
+  ).toHaveCount(0)
 
   const png = await inspectDownloadedPng(page)
   expect(await getRevokedDownloadUrls(page)).toEqual([])
@@ -936,8 +933,8 @@ test("download waits for the current WebP illustration before exporting", async 
 
   await page.goto("/", { waitUntil: "domcontentloaded" })
   await expect(page.getByText("“有一束光，正在纸上慢慢醒来。”")).toBeVisible()
-  await page.getByRole("button", { name: "下载 PNG" }).click()
-  await expect(page.getByRole("button", { name: "PNG 准备中" })).toBeDisabled()
+  await page.getByRole("button", { name: "下载" }).click()
+  await expect(page.getByRole("button", { name: "准备中" })).toBeDisabled()
   await page.waitForTimeout(300)
   expect(sawDownload).toBe(false)
 
@@ -946,7 +943,7 @@ test("download waits for the current WebP illustration before exporting", async 
   await downloadAfterImage
   await expect(
     page.getByText("PNG 已准备好，浏览器会开始下载这张图文卡片。")
-  ).toBeVisible()
+  ).toHaveCount(0)
 })
 
 test("download exports the refreshed current card instead of stale seed data", async ({
@@ -985,7 +982,7 @@ test("download exports the refreshed current card instead of stale seed data", a
 
   await page.goto("/")
   await page.getByRole("button", { name: "再来一张" }).click()
-  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
+  await expect(page.getByText("“新的风把纸页轻轻翻亮。”")).toBeVisible()
 
   const refreshedSentence = await page
     .getByRole("article", { name: "图文卡片预览" })
@@ -1018,11 +1015,11 @@ test("download limit response blocks PNG generation", async ({ page }) => {
 
   await page.goto("/")
   const unexpectedDownload = page.waitForEvent("download", { timeout: 750 })
-  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await page.getByRole("button", { name: "下载" }).click()
   await expect(
     page.getByText("这个操作有点频繁了，先让当前图文卡片停留一会儿。")
   ).toBeVisible()
-  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "下载" })).toBeEnabled()
   await expect(unexpectedDownload).rejects.toThrow()
 })
 
@@ -1041,11 +1038,11 @@ test("download export failure keeps current card and re-enables controls", async
     .getByText(/^“.*”$/)
     .textContent()
 
-  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await page.getByRole("button", { name: "下载" }).click()
   await expect(
     page.getByText("PNG 暂时没有准备成功，当前图文卡片已保留。请稍后再试。")
   ).toBeVisible()
-  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "下载" })).toBeEnabled()
   await expect(page.getByText(initialSentence ?? "")).toBeVisible()
 })
 
@@ -1306,14 +1303,14 @@ test("disables both action buttons while download export is pending", async ({
   })
 
   await page.goto("/")
-  await page.getByRole("button", { name: "下载 PNG" }).click()
+  await page.getByRole("button", { name: "下载" }).click()
 
-  await expect(page.getByRole("button", { name: "PNG 准备中" })).toBeDisabled()
+  await expect(page.getByRole("button", { name: "准备中" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "再来一张" })).toBeDisabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeDisabled()
 
   releaseResponse?.()
-  await expect(page.getByRole("button", { name: "下载 PNG" })).toBeEnabled()
+  await expect(page.getByRole("button", { name: "下载" })).toBeEnabled()
   await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
   await expect(page.getByRole("button", { name: "分享" })).toBeEnabled()
 })
@@ -1358,7 +1355,6 @@ test("shares the refreshed current card instead of stale seed data", async ({
 
   await page.goto("/")
   await page.getByRole("button", { name: "再来一张" }).click()
-  await expect(page.getByText("已刷新生成新的图文卡片。")).toBeVisible()
   await expect(page.getByText("“新的风把纸页轻轻翻亮。”")).toBeVisible()
 
   await page.getByRole("button", { name: "分享" }).click()

@@ -1,5 +1,6 @@
 "use client"
 
+import { RefreshCw, Download, Share2 } from "lucide-react"
 import { useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -32,8 +33,6 @@ const cardActionFailureAnnouncement =
   "这个操作暂时没有成功，当前图文卡片已保留。请稍后再试。"
 const cardActionLimitAnnouncement =
   "这个操作有点频繁了，先让当前图文卡片停留一会儿。"
-const downloadSuccessAnnouncement =
-  "PNG 已准备好，浏览器会开始下载这张图文卡片。"
 const downloadFailureAnnouncement =
   "PNG 暂时没有准备成功，当前图文卡片已保留。请稍后再试。"
 const shareSuccessAnnouncement =
@@ -150,7 +149,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
 
       if (action === "download") {
         downloadBlob(exportedCard.blob, exportedCard.fileName)
-        announce(downloadSuccessAnnouncement)
+        announce("")
         return
       }
 
@@ -187,7 +186,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
   }
 
   return (
-    <>
+    <div className="flex w-full flex-col items-center gap-4">
       <QuietGalleryCard
         ref={cardRef}
         card={currentCard}
@@ -195,51 +194,63 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
         isTilted={false}
       />
 
-      <div className="flex w-full flex-col items-center gap-3">
+      <div className="w-full max-w-[min(23.5rem,calc(100vw-2rem))] px-1 sm:max-w-[25rem]">
         <div
-          className="flex w-full max-w-xl flex-col justify-center gap-3 sm:flex-row"
+          aria-hidden="true"
+          className="mx-auto mb-1.5 h-px w-16 bg-[var(--ink-sketch)]/28"
+        />
+        <div
+          className="grid w-full grid-cols-3 items-end gap-2"
+          role="group"
           aria-label="图文卡片操作"
         >
           <Button
             type="button"
-            size="lg"
-            className="rounded-full px-5"
+            size="icon-lg"
+            variant="ghost"
+            className="mx-auto rounded-full bg-transparent text-[var(--ink-deep)] shadow-none hover:bg-[var(--paper-sheet)]/52 hover:text-[var(--ink-soft)] [&_svg]:size-5"
             disabled={isCardBusy}
+            aria-label={isRefreshing ? "刷新中" : "再来一张"}
             onClick={refreshCard}
           >
-            {isRefreshing ? "刷新生成中" : "再来一张"}
+            <RefreshCw aria-hidden="true" strokeWidth={1.7} />
           </Button>
           <Button
             type="button"
-            size="lg"
-            variant="outline"
-            className="rounded-full border-[var(--ink-sketch)] bg-[var(--paper-sheet)]/80 px-5"
+            size="icon-lg"
+            variant="ghost"
+            className="mx-auto rounded-full bg-transparent text-[var(--ink-soft)] shadow-none hover:bg-[var(--paper-sheet)]/52 hover:text-[var(--ink-deep)] [&_svg]:size-5"
             disabled={isCardBusy}
+            aria-label={pendingCardAction === "download" ? "准备中" : "下载"}
             onClick={() => void runCardAction("download")}
           >
-            {pendingCardAction === "download" ? "PNG 准备中" : "下载 PNG"}
+            <Download aria-hidden="true" strokeWidth={1.7} />
           </Button>
           <Button
             type="button"
-            size="lg"
-            variant="outline"
-            className="rounded-full border-[var(--ink-sketch)] bg-[var(--paper-sheet)]/80 px-5"
+            size="icon-lg"
+            variant="ghost"
+            className="mx-auto rounded-full bg-transparent text-[var(--ink-soft)] shadow-none hover:bg-[var(--paper-sheet)]/52 hover:text-[var(--ink-deep)] [&_svg]:size-5"
             disabled={isCardBusy}
+            aria-label={pendingCardAction === "share" ? "确认中" : "分享"}
             onClick={() => void runCardAction("share")}
           >
-            {pendingCardAction === "share" ? "分享确认中" : "分享"}
+            <Share2 aria-hidden="true" strokeWidth={1.7} />
           </Button>
         </div>
         <p
-          className="min-h-6 text-center text-sm text-[var(--ink-soft)]/75"
+          className="mt-4 min-h-6 text-center text-xs leading-6 text-[var(--ink-soft)]/58 sm:text-sm"
           aria-live="polite"
         >
           <span>{announcement.text}</span>
-          {announcement.sequence > 0 ? (
-            <span className="sr-only"> 第 {announcement.sequence} 次提示</span>
+          {announcement.text ? (
+            <span className="sr-only">
+              {" "}
+              第 {announcement.sequence} 次提示
+            </span>
           ) : null}
         </p>
       </div>
-    </>
+    </div>
   )
 }
