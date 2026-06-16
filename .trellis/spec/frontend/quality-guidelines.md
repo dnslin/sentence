@@ -331,6 +331,7 @@ export function QuietGalleryCard({
 ### 3. Contracts
 
 - The client may replace the rendered 图文卡片 only after `/api/ready-card` returns `ok` and the JSON narrows through `isReadyCardResponse`.
+- After a successful refresh replacement, the visible card change is the success feedback; do not add redundant live-region copy such as `已刷新生成新的图文卡片。`.
 - `PublicReadyCard` includes `illustrationUrl: string | null`; frontend code must consume this shared DTO rather than redefine the API response shape.
 - Non-OK `/api/ready-card` JSON must be treated as `unknown` and narrowed through the shared `isReadyCardErrorResponse` guard before reading current production error fields.
 - `ready_card_not_found` maps to calm empty-stock copy while preserving the current 图文卡片.
@@ -349,7 +350,7 @@ export function QuietGalleryCard({
 
 | Condition                                                  | Required behavior                                                                                                |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| API returns valid `{ card }`                               | Replace sentence and illustration accessible label together.                                                     |
+| API returns valid `{ card }`                               | Replace sentence and illustration accessible label together without redundant success copy.                       |
 | API returns `illustrationUrl` as a string                  | Render a real image whose URL matches `illustrationUrl` and whose accessible name/alt is `sceneLabel`.           |
 | API returns `illustrationUrl: null`                        | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`.                              |
 | API returns non-OK unknown status or invalid error payload | Keep current card, announce non-technical retry-oriented failure, re-enable refresh.                             |
@@ -362,7 +363,7 @@ export function QuietGalleryCard({
 
 ### 5. Good/Base/Bad Cases
 
-- Good: clicking `再来一张` changes both `“sentence”` text and image accessible label after a successful API response.
+- Good: clicking `再来一张` changes both `“sentence”` text and image accessible label after a successful API response; no extra success copy is needed because the card change is the feedback.
 - Good: a card with `illustrationUrl` renders a browser-fetchable `<img>` using the same-origin stored WebP URL.
 - Base: a seeded/mock card with `illustrationUrl: null` renders the existing CSS fallback and remains accessible through `role="img"`.
 - Good: a failed refresh with `ready_card_not_found` keeps the visible card and announces that new 图文卡片 are still being prepared.
@@ -376,7 +377,7 @@ export function QuietGalleryCard({
 
 For refresh UI work, use browser-visible tests that assert:
 
-- Clicking `再来一张` waits for `/api/ready-card` and replaces sentence plus image accessible label.
+- Clicking `再来一张` waits for `/api/ready-card` and replaces sentence plus image accessible label; success does not need extra live-region copy.
 - A ready-card response with `illustrationUrl` renders a real image whose `src` is the public WebP URL and whose accessible name is the scene label.
 - A ready-card response with `illustrationUrl: null` keeps the CSS fallback illustration accessible through the scene label.
 - A delayed response shows pending copy/state and prevents duplicate requests.
