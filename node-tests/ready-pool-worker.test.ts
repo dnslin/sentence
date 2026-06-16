@@ -16,6 +16,7 @@ import {
   runReadyPoolWorkerLoop,
   type ReadyPoolErrorSummary,
   type ReadyPoolGenerator,
+  type ReadyPoolProgressEvent,
 } from "@/lib/worker/ready-pool-worker"
 
 import type { DatabaseClient } from "@/lib/db/client"
@@ -185,6 +186,66 @@ describe("ready-pool worker", () => {
     assert.equal(summary.startedInventory, 50)
     assert.equal(summary.endingInventory, 50)
     assert.equal(summary.skippedReason, "inventory_above_threshold")
+  })
+
+  test("reports per-generation progress without leaking provider secrets", async () => {
+    await seedReadyCards(49)
+    const secret = "xai-secret-token-123456789"
+    const progress: ReadyPoolProgressEvent[] = []
+    let calls = 0
+
+    const summary = await replenishReadyPoolOnce({
+      client,
+      onProgress: (event) => progress.push(event),
+      generateReadyCard: async () => {
+        calls += 1
+        if (calls === 1) return createFailedResult()
+        if (calls === 2)
+          throw new Error(`provider failed with Bearer ${secret}`)
+
+        const cardId = await insertReadyCard(`progress-${cardSequence}`)
+        return createReadyResult(cardId)
+      },
+    })
+
+    assert.equal(summary.endingInventory, readyPoolTargetInventory)
+    assert.equal(summary.failedCount, 2)
+    assert.equal(progress.length, summary.reservedCount * 2)
+
+    const started = progress.filter(
+      (event) => event.event === "generation_started"
+    )
+    const finished = progress.filter(
+      (event) => event.event === "generation_finished"
+    )
+
+    assert.equal(started.length, summary.reservedCount)
+    assert.equal(finished.length, summary.reservedCount)
+    assert.deepEqual(started[0], {
+      event: "generation_started",
+      inventory: 49,
+      remainingToTarget: 151,
+      threshold: 50,
+      target: readyPoolTargetInventory,
+      dailyCap: readyPoolDailyGenerationCap,
+      reservedCount: 1,
+    })
+    assert.equal(finished[0]?.status, "failed")
+    assert.equal(finished[0]?.attemptId === null, false)
+    assert.equal(finished[0]?.cardId, null)
+    assert.equal(finished[0]?.errorStage, "image_generation")
+    assert.equal(finished[0]?.errorMessage, "controlled failure")
+    assert.equal(finished[1]?.status, "exception")
+    assert.equal(finished[1]?.attemptId, null)
+    assert.equal(finished[1]?.errorStage, "generation_exception")
+    assert.match(finished[1]?.errorMessage ?? "", /\[redacted\]/)
+    assert.doesNotMatch(JSON.stringify(progress), new RegExp(secret))
+
+    const finalEvent = finished.at(-1)
+    assert.equal(finalEvent?.status, "ready")
+    assert.equal(finalEvent?.inventoryAfter, readyPoolTargetInventory)
+    assert.equal(finalEvent?.remainingToTarget, 0)
+    assert.equal(finalEvent?.readyInventoryGrowthCount, 151)
   })
 
   test("worker generation jobs do not overlap within one replenishment pass", async () => {
@@ -394,6 +455,33 @@ describe("ready-pool worker", () => {
     assert.equal(summary.startedInventory, 49)
     assert.equal(summary.endingInventory, readyPoolTargetInventory)
     assert.equal(calls, 151)
+  })
+
+  test("worker loop forwards per-generation progress events", async () => {
+    await seedReadyCards(49)
+    const loopStopSignal = { stopped: false }
+    const progress: ReadyPoolProgressEvent[] = []
+
+    await runReadyPoolWorkerLoop({
+      client,
+      generateReadyCard: async () => {
+        const cardId = await insertReadyCard(`loop-progress-${cardSequence}`)
+        return createReadyResult(cardId)
+      },
+      stopSignal: loopStopSignal,
+      onProgress: (event) => progress.push(event),
+      sleep: async () => {
+        loopStopSignal.stopped = true
+      },
+    })
+
+    assert.equal(progress[0]?.event, "generation_started")
+    assert.equal(progress[1]?.event, "generation_finished")
+    assert.equal(
+      progress.filter((event) => event.event === "generation_finished").at(-1)
+        ?.remainingToTarget,
+      0
+    )
   })
 
   test("worker loop survives pass errors and later iterations continue", async () => {
