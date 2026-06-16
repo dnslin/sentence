@@ -22,7 +22,7 @@ Database:
 - `pnpm db:seed` — seed the stable ready cards.
 - `pnpm db:setup` — `db:migrate` then `db:seed`; `dev`/`start` run it automatically.
 
-Generation worker / smoke (require `XAI_API_KEY`):
+Generation worker / smoke (require `XAI_API_KEY`; optional `XAI_BASE_URL`):
 
 - `pnpm worker:ready-pool` — long-running ready-pool replenishment loop (the second service alongside `web`).
 - `pnpm smoke:xai` — one-shot real xAI generation for manual verification.
@@ -77,7 +77,7 @@ Next.js 16 App Router, React 19, TypeScript strict, pnpm, Tailwind CSS v4, shadc
 
 - `hitokoto-client.ts` / `hitokoto-pipeline.ts` — fetch a 6–30 char sentence from `v1.hitokoto.cn` (categories `d/e/i/k`), normalize, dedupe by uuid/identity, and store the sentence plus metadata.
 - `illustration-prompt.ts` — prompt-rewrite model `grok-4.3`, image model `grok-imagine-image-quality`, 1:1 / 1k. Non-attributed picture-book system prompt with a deterministic fallback prompt when rewrite fails.
-- `xai-client.ts` / `xai-config.ts` — OpenAI SDK pointed at `https://api.x.ai/v1`; `XAI_API_KEY` is required.
+- `xai-client.ts` / `xai-config.ts` — OpenAI SDK configured from server-only env: `XAI_API_KEY` is required; `XAI_BASE_URL` optionally overrides the default `https://api.x.ai/v1`.
 - `xai-generation-pipeline.ts` — orchestrates rewrite → image (2 attempts) → base64 normalize → store WebP → upsert card, recording each stage in `generation_attempts`. Returns `ready` or `failed`.
 - `generated-illustration-storage.ts` — `sharp` → WebP quality 88, atomic temp-write + rename, filenames are `UUID.webp` under `JUHUA_GENERATED_ILLUSTRATIONS_DIR` (default `data/generated-illustrations`).
 
@@ -96,6 +96,7 @@ Next.js 16 App Router, React 19, TypeScript strict, pnpm, Tailwind CSS v4, shadc
 ### Environment variables
 
 - `XAI_API_KEY` — required for the worker, smoke script, and any real generation.
+- `XAI_BASE_URL` — optional xAI OpenAI-compatible API base URL; defaults to `https://api.x.ai/v1` when unset or blank.
 - `JUHUA_DATABASE_PATH` — default `data/juhua.sqlite`; e2e uses `test-data/e2e/juhua.sqlite`.
 - `JUHUA_GENERATED_ILLUSTRATIONS_DIR` — default `data/generated-illustrations`.
 

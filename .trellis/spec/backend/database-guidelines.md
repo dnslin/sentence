@@ -806,7 +806,10 @@ Hitokoto sentence row → xAI prompt rewrite/fallback → xAI base64 image → g
 
 Keep Node `node:test` generation-pipeline tests under `node-tests/`, not `tests/`, so Playwright's `testDir: "./tests"` remains browser e2e only.
 
-**xAI constants**
+**xAI configuration and constants**
+
+- `XAI_API_KEY` — required server-only environment variable.
+- `XAI_BASE_URL` — optional server-only environment variable; when unset or blank, use the default `https://api.x.ai/v1`.
 
 ```typescript
 const xaiApiBaseUrl = "https://api.x.ai/v1"
@@ -835,7 +838,7 @@ type XaiGenerationClient = {
 }
 ```
 
-Use this injectable boundary for tests; production callers use the OpenAI-compatible SDK configured with `XAI_API_KEY` and `baseURL: "https://api.x.ai/v1"`.
+Use this injectable boundary for tests; production callers use the OpenAI-compatible SDK configured with server-only `XAI_API_KEY` and `baseURL` loaded from `XAI_BASE_URL` or the default `https://api.x.ai/v1`.
 
 **Database table**
 

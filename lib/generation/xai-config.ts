@@ -28,9 +28,11 @@ export function loadXaiConfig<TClient>(input?: {
     )
   }
 
+  const baseURL = env.XAI_BASE_URL?.trim() || xaiApiBaseUrl
+
   const config = {
     apiKey,
-    baseURL: xaiApiBaseUrl,
+    baseURL,
   }
 
   return input?.createClient ? input.createClient(config) : config

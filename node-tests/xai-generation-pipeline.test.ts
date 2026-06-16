@@ -57,6 +57,7 @@ const baseHitokotoResponse = {
 let previousDatabasePath: string | undefined
 let previousGeneratedIllustrationsDir: string | undefined
 let previousXaiApiKey: string | undefined
+let previousXaiBaseUrl: string | undefined
 let tempDir: string
 let client: DatabaseClient
 let migrationImportSequence = 0
@@ -98,6 +99,7 @@ beforeEach(async () => {
   previousGeneratedIllustrationsDir =
     process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR
   previousXaiApiKey = process.env.XAI_API_KEY
+  previousXaiBaseUrl = process.env.XAI_BASE_URL
   tempDir = mkdtempSync(join(tmpdir(), "juhua-xai-"))
   process.env.JUHUA_DATABASE_PATH = join(tempDir, "juhua.sqlite")
   process.env.JUHUA_GENERATED_ILLUSTRATIONS_DIR = join(
@@ -129,6 +131,12 @@ afterEach(() => {
     delete process.env.XAI_API_KEY
   } else {
     process.env.XAI_API_KEY = previousXaiApiKey
+  }
+
+  if (previousXaiBaseUrl === undefined) {
+    delete process.env.XAI_BASE_URL
+  } else {
+    process.env.XAI_BASE_URL = previousXaiBaseUrl
   }
 
   rmSync(tempDir, { recursive: true, force: true })
@@ -624,6 +632,39 @@ describe("xAI configuration and smoke safety", () => {
       XaiConfigurationError
     )
     assert.equal(constructed, false)
+  })
+
+  test("loads xAI base URL from the server environment", () => {
+    const config = loadXaiConfig({
+      env: {
+        ...process.env,
+        XAI_API_KEY: "xai-test-secret",
+        XAI_BASE_URL: "  https://proxy.example.test/v1  ",
+      },
+    })
+
+    assert.deepEqual(config, {
+      apiKey: "xai-test-secret",
+      baseURL: "https://proxy.example.test/v1",
+    })
+  })
+
+  test("falls back to the default xAI base URL when env value is unset or blank", () => {
+    assert.equal(
+      loadXaiConfig({ env: { ...process.env, XAI_API_KEY: "xai-test-secret" } })
+        .baseURL,
+      "https://api.x.ai/v1"
+    )
+    assert.equal(
+      loadXaiConfig({
+        env: {
+          ...process.env,
+          XAI_API_KEY: "xai-test-secret",
+          XAI_BASE_URL: " \t\n ",
+        },
+      }).baseURL,
+      "https://api.x.ai/v1"
+    )
   })
 
   test("accepts valid base64 image output without padding", () => {
