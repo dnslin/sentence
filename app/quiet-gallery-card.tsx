@@ -18,7 +18,7 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
         aria-label="图文卡片预览"
         data-card="quiet-gallery"
         className={cn(
-          "grid aspect-[4/5] w-full max-w-[min(24rem,calc(100vw-2rem))] grid-rows-[3fr_1fr] overflow-hidden rounded-[2rem] border border-stone-200 bg-white p-3 shadow-[0_24px_70px_rgba(87,72,52,0.14)] sm:max-w-[26rem] sm:p-4",
+          "paper-grain grid aspect-[4/5] w-full max-w-[min(24rem,calc(100vw-2rem))] grid-rows-[3fr_1fr] overflow-hidden rounded-[2.2rem_1.6rem_2.2rem_1.6rem] border-[1.5px] border-[var(--ink-sketch)] bg-[var(--paper-card)] p-3 shadow-[0_24px_70px_rgba(var(--shadow-paper),0.16)] sm:max-w-[26rem] sm:p-4",
           "motion-safe:transition motion-safe:duration-500 motion-safe:ease-out motion-reduce:transition-none",
           isTilted ? "motion-safe:-rotate-1" : "motion-safe:rotate-0",
           isRefreshing &&
@@ -30,14 +30,14 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
           <img
             src={card.illustrationUrl}
             alt={card.sceneLabel}
-            className="h-full w-full rounded-t-[1.5rem] object-cover"
+            className="h-full w-full rounded-t-[1.6rem] object-cover"
           />
         ) : (
           <div
             role="img"
             aria-label={card.sceneLabel}
             className={cn(
-              "relative overflow-hidden rounded-t-[1.5rem]",
+              "relative overflow-hidden rounded-t-[1.6rem]",
               card.accent === "dawn" &&
                 "bg-[linear-gradient(180deg,#f8e2bd_0%,#edf1df_58%,#d5dfcc_100%)]",
               card.accent === "rain" &&
@@ -55,8 +55,8 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
             <div className="absolute bottom-0 left-0 h-16 w-full bg-gradient-to-t from-white/45 to-transparent" />
           </div>
         )}
-        <div className="flex items-center justify-center rounded-b-[1.5rem] bg-[#fbf3e6] px-6 py-5 text-center">
-          <p className="text-xl leading-9 font-medium text-stone-700 sm:text-2xl sm:leading-10">
+        <div className="paper-grain flex items-center justify-center overflow-hidden rounded-b-[1.6rem] bg-[var(--paper-panel)] px-6 py-5 text-center">
+          <p className="line-clamp-3 text-xl leading-9 font-medium text-[var(--ink-soft)] sm:text-2xl sm:leading-10">
             “{card.sentence}”
           </p>
         </div>

@@ -111,7 +111,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
         throw new Error("invalid ready-card response")
 
       setCurrentCard(body.card)
-      announce("已刷新生成新的图文卡片。")
+      announce("")
     } catch {
       announce(refreshFailureAnnouncement)
     } finally {
@@ -213,7 +213,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             type="button"
             size="lg"
             variant="outline"
-            className="rounded-full bg-white/70 px-5"
+            className="rounded-full border-[var(--ink-sketch)] bg-[var(--paper-sheet)]/80 px-5"
             disabled={isCardBusy}
             onClick={() => void runCardAction("download")}
           >
@@ -223,7 +223,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
             type="button"
             size="lg"
             variant="outline"
-            className="rounded-full bg-white/70 px-5"
+            className="rounded-full border-[var(--ink-sketch)] bg-[var(--paper-sheet)]/80 px-5"
             disabled={isCardBusy}
             onClick={() => void runCardAction("share")}
           >
@@ -231,7 +231,7 @@ export function HomeCardExperience({ card }: { card: PublicReadyCard }) {
           </Button>
         </div>
         <p
-          className="min-h-6 text-center text-sm text-stone-500"
+          className="min-h-6 text-center text-sm text-[var(--ink-soft)]/75"
           aria-live="polite"
         >
           <span>{announcement.text}</span>

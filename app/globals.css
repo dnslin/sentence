@@ -83,6 +83,16 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+
+    /* Paper Desk art direction (quiet/refined hand-drawn) */
+    --paper-desk: #f1e8d8;
+    --paper-desk-edge: #e7dac4;
+    --paper-sheet: #fbf6ec;
+    --paper-card: #fffdf8;
+    --paper-panel: #fbf3e6;
+    --ink-sketch: #b9ad97;
+    --ink-soft: #6f6552;
+    --shadow-paper: 87 72 52;
 }
 
 .dark {
@@ -117,6 +127,16 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+
+    /* Paper Desk tokens stay light: this is a daytime-paper product surface. */
+    --paper-desk: #2a2722;
+    --paper-desk-edge: #211e1a;
+    --paper-sheet: #322e28;
+    --paper-card: #34302a;
+    --paper-panel: #2f2b25;
+    --ink-sketch: #6f6757;
+    --ink-soft: #cfc6b4;
+    --shadow-paper: 0 0 0;
 }
 
 @layer base {
@@ -132,4 +152,21 @@
   html {
     @apply font-sans;
     }
+}
+
+@layer components {
+  /* Soft fibrous paper grain, drawn with layered radial gradients (no asset). */
+  .paper-grain {
+    background-image:
+      radial-gradient(rgba(120, 104, 78, 0.05) 1px, transparent 1.4px),
+      radial-gradient(rgba(120, 104, 78, 0.04) 1px, transparent 1.4px);
+    background-size: 14px 14px, 22px 22px;
+    background-position: 0 0, 7px 11px;
+  }
+
+  /* Hand-drawn-style border: irregular organic radius + soft sketched stroke. */
+  .sketch-edge {
+    border-radius: 250px 14px 230px 18px / 18px 220px 16px 240px;
+    border: 1.5px solid var(--ink-sketch);
+  }
 }
