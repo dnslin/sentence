@@ -489,3 +489,39 @@ Implemented GitHub issue #10 on branch issue-10-development: public homepage emp
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 受保护的运营状态页面与状态 API (issue #14)
+
+**Date**: 2026-06-16
+**Task**: 受保护的运营状态页面与状态 API (issue #14)
+**Branch**: `issue-14-protected-status-page`
+
+### Summary
+
+新增受 JUHUA_ADMIN_STATUS_TOKEN 保护的运营状态页面与 API：认证（未配置即拒绝、恒定时间比较、Bearer header + query 双支持、page 与 API 共享决策路径）、数据收集（ready/failed/in-progress 计数、脱敏的最近生成错误、含 WAL/SHM 的存储指标）。TDD 垂直切片，25 个 node 单测 + 5 个 e2e。提交 3 个 work commit + 1 个 code-review 修复，建 PR #31 关联 issue #14。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fdb0341` | (see git log) |
+| `b0e3842` | (see git log) |
+| `3e2e113` | (see git log) |
+| `2bece46` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

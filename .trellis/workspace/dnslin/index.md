@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-06-12
+- **Total Sessions**: 15
+- **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~491 | Active |
+| `journal-1.md` | ~527 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-06-16 | 受保护的运营状态页面与状态 API (issue #14) | `fdb0341`, `b0e3842`, `3e2e113`, `2bece46` | `issue-14-protected-status-page` |
 | 14 | 2026-06-12 | Issue 10 empty-stock failure states | `5397f1a`,  `d7b294f` | `issue-10-development` |
 | 13 | 2026-06-12 | PR 26 ready-pool review fixes | `7452af9`, `d0f08b0` | `issue-9-pregenerated-pool-worker` |
 | 12 | 2026-06-12 | Issue 9 ready-pool worker | `22cbb1a`, `ae52081` | `issue-9-pregenerated-pool-worker` |
