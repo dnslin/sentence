@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Check final frontend work against required guide checklist."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verify route-visible behavior, accessibility, reduced motion, card action/export/share contracts, and production DOM constraints."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Ensure no accidental query-param or App Router typing regression."}
+{"file":"CONTEXT.md","reason":"Check copy and visual/product semantics remain aligned with project domain language."}
+{"file":".trellis/tasks/06-16-frontend-handdrawn-responsive-redesign/prd.md","reason":"Primary acceptance criteria for this redesign iteration."}
+{"file":".trellis/tasks/06-16-frontend-handdrawn-responsive-redesign/design.md","reason":"Technical and aesthetic design constraints for implementation review."}
+{"file":".trellis/tasks/06-16-frontend-handdrawn-responsive-redesign/implement.md","reason":"Execution checklist and validation commands for final review."}

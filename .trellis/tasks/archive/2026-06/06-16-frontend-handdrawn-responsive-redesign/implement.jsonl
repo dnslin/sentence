@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend pre-development checklist and active guide index for homepage UI edits."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser-visible route behavior, accessibility, reduced motion, production DOM, refresh/action/export/share contracts."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Next.js App Router route/query contracts; confirms no new homepage query behavior should be introduced."}
+{"file":"CONTEXT.md","reason":"Product language contract for 图文卡片, 一言/随机短句, 图文绑定, 刷新生成, 非署名绘本风."}
+{"file":".trellis/tasks/archive/2026-06/06-16-frontend-ui-handdrawn-redesign/prd.md","reason":"Prior first-pass Paper Desk redesign scope and constraints; this task is an aesthetic iteration beyond it."}
+{"file":".trellis/tasks/archive/2026-06/06-16-frontend-ui-handdrawn-redesign/design.md","reason":"Prior design decisions and export/page boundary constraints to preserve."}
