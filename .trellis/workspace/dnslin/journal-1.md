@@ -558,3 +558,36 @@ Added XAI_BASE_URL support for server-side xAI configuration while preserving XA
 ### Next Steps
 
 - None - task complete
+
+
+## Session 17: Fix xAI image MIME inference
+
+**Date**: 2026-06-16
+**Task**: Fix xAI image MIME inference
+**Branch**: `master`
+
+### Summary
+
+Fixed xAI generated-image normalization so missing or unsupported provider MIME is inferred from decoded PNG/JPEG/WebP bytes, added regression coverage, updated backend generation spec, and verified pnpm test:xai, typecheck, and lint.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e1792c2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

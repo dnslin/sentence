@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 16
+- **Total Sessions**: 17
 - **Last Active**: 2026-06-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~560 | Active |
+| `journal-1.md` | ~593 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 17 | 2026-06-16 | Fix xAI image MIME inference | `e1792c2` | `master` |
 | 16 | 2026-06-16 | Manage xAI env config | `c2c5226` | `master` |
 | 15 | 2026-06-16 | 受保护的运营状态页面与状态 API (issue #14) | `fdb0341`, `b0e3842`, `3e2e113`, `2bece46` | `issue-14-protected-status-page` |
 | 14 | 2026-06-12 | Issue 10 empty-stock failure states | `5397f1a`,  `d7b294f` | `issue-10-development` |
