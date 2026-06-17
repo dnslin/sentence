@@ -1,0 +1,31 @@
+services:
+  web:
+    image: ghcr.io/dnslin/sentence:latest
+    container_name: juhua-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - juhua-data:/app/data
+    command: ["pnpm", "start"]
+
+  worker:
+    image: ghcr.io/dnslin/sentence:latest
+    container_name: juhua-worker
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - juhua-data:/app/data
+    command: ["pnpm", "worker:ready-pool"]
+    depends_on:
+      - web
+
+volumes:
+  juhua-data:

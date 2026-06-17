@@ -94,6 +94,14 @@ to:
 
 and remove the `build:` block. Make sure both `web` and `worker` services use the same image tag. The persisted `juhua-data` volume and `.env` configuration remain the same.
 
+Or use the ready-made `docker/docker-compose.remote.yml`, which already points to the published image:
+
+```bash
+# Pull and start from the remote image
+docker compose -f docker/docker-compose.remote.yml pull
+docker compose -f docker/docker-compose.remote.yml up -d
+```
+
 ## Upgrades
 
 1. Pull or apply the new source code.
