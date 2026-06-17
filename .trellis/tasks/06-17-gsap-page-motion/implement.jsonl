@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend spec index and pre-development checklist for route/component edits."}
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Browser-visible route checks, production UI contracts, refresh/export/share UI state, and reduced-motion validation."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Next.js 16 route boundary rules; confirms no query-boundary changes are planned."}
