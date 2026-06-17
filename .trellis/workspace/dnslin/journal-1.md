@@ -625,3 +625,38 @@ Refined the homepage into a restrained hand-drawn picture-book card experience, 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: Add GSAP homepage motion
+
+**Date**: 2026-06-17
+**Task**: Add GSAP homepage motion
+**Branch**: `task/gsap-page-motion`
+
+### Summary
+
+Added scoped GSAP quiet picture-book motion to the homepage card experience, preserved refresh/download/share export contracts, documented motion-safe DOM-to-PNG export rules, and verified lint, typecheck, build, and focused Playwright coverage.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ec7976a` | (see git log) |
+| `54654f9` | (see git log) |
+| `ead884a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 18
-- **Last Active**: 2026-06-16
+- **Total Sessions**: 19
+- **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~627 | Active |
+| `journal-1.md` | ~662 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 19 | 2026-06-17 | Add GSAP homepage motion | `ec7976a`, `54654f9`, `ead884a` | `task/gsap-page-motion` |
 | 18 | 2026-06-16 | Frontend hand-drawn responsive redesign | `8926d5a`, `fb97d46` | `master` |
 | 17 | 2026-06-16 | Fix xAI image MIME inference | `e1792c2` | `master` |
 | 16 | 2026-06-16 | Manage xAI env config | `c2c5226` | `master` |
