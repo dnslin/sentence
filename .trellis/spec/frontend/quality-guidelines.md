@@ -350,7 +350,7 @@ export function QuietGalleryCard({
 
 | Condition                                                  | Required behavior                                                                                                |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| API returns valid `{ card }`                               | Replace sentence and illustration accessible label together without redundant success copy.                       |
+| API returns valid `{ card }`                               | Replace sentence and illustration accessible label together without redundant success copy.                      |
 | API returns `illustrationUrl` as a string                  | Render a real image whose URL matches `illustrationUrl` and whose accessible name/alt is `sceneLabel`.           |
 | API returns `illustrationUrl: null`                        | Render the CSS fallback illustration with `role="img"` and `aria-label=sceneLabel`.                              |
 | API returns non-OK unknown status or invalid error payload | Keep current card, announce non-technical retry-oriented failure, re-enable refresh.                             |
@@ -435,7 +435,7 @@ Use this contract when a production-facing route starts a public card action thr
 
 ```typescript
 // app/api/card-action/route.ts
-POST /api/card-action
+POST / api / card - action
 ```
 
 **Request/response contracts**
@@ -595,6 +595,7 @@ export function downloadBlob(blob: Blob, fileName: string): void
 - Same-origin public illustration URLs may be captured by the DOM-to-image library; remote or unsafe URLs must not be introduced as an export strategy.
 - Wait for `document.fonts.ready` when available, and wait for card `<img>` elements to load/decode before calling DOM-to-image so exported WebP cards do not miss the illustration.
 - Download/share actions and refresh are mutually exclusive while any one of them is pending; do not let refresh mutate the card DOM while export is in flight, and do not export a transient `aria-busy`/refreshing card style.
+- If runtime JavaScript animation targets the card article or export-relevant descendants, settle those animations before export reads the node: kill active tweens on the export targets and clear `transform`, `opacity`, and `visibility` so the PNG captures the final card, not an entrance/refresh pose.
 - Browser download helpers should delay `URL.revokeObjectURL` long enough for the browser to consume the Blob URL; do not revoke on a zero-delay timer immediately after `anchor.click()`.
 - Export failures must preserve the current 图文卡片, re-enable action buttons, and show non-technical retry copy.
 - Production exporter modules must not expose test-only globals, callbacks, or debug probes. Browser tests should inject observation seams with Playwright `addInitScript` when they need to observe anchor clicks or blob URLs, but must not disable production cleanup behavior such as `URL.revokeObjectURL`.
@@ -610,6 +611,7 @@ export function downloadBlob(blob: Blob, fileName: string): void
 | `illustrationUrl` is `null`                                             | The captured card includes the CSS fallback illustration.                                          |
 | Refresh is pending                                                      | Download/share are disabled; do not export the transient refreshing card style.                    |
 | Download/share is pending                                               | Refresh is disabled; do not mutate the card DOM while export may be reading it.                    |
+| Runtime JS animation is active on the article or export-relevant child  | Settle export targets first, then capture the final card with no transient transform/opacity pose. |
 | Card node is missing, card image fails, or DOM-to-image returns no blob | Fail gracefully, keep the card visible, and re-enable controls.                                    |
 | Card-action gate returns `ready_card_limited`                           | Do not call the exporter and do not trigger a browser download.                                    |
 | Test needs download/blob observability                                  | Inject test-only monkeypatches from Playwright while preserving production cleanup behavior.       |
@@ -620,6 +622,7 @@ export function downloadBlob(blob: Blob, fileName: string): void
 - Good: a stored WebP card exports through the same-origin public image route and still produces a 1080×1350 PNG.
 - Base: a seed card with `illustrationUrl: null` exports the same CSS fallback art and sentence text visible on the page.
 - Good: tests inspect the downloaded blob with `createImageBitmap` and compare sampled pixels against a screenshot of the visible card article.
+- Good: when GSAP or another JS animation library animates export-relevant card nodes, the action handler settles those targets before DOM-to-image capture so immediate download/share still exports the final card pose.
 - Bad: adding `window.__readyCardExportInputs` or a similar production global only so tests can inspect exporter input.
 - Bad: hand-recreating card layout, gradients, typography, and wrapping in canvas; this drifts from the real `QuietGalleryCard` style.
 - Bad: screenshotting `document.body` or a wrapper that can include controls, source metadata, prototype UI, or page background.
@@ -634,6 +637,7 @@ For PNG export work, use browser-visible tests that assert:
 - A same-origin WebP illustration card is captured from the public image URL during export, including the case where the image request/decode is still pending when the user clicks download.
 - A refreshed current card is exported instead of stale seed data.
 - Refresh is disabled while download/share is pending, and download/share are disabled while refresh is pending.
+- If runtime JS animation can affect the card article or export-relevant descendants, an immediate download/share path settles those animations before capture and still matches the final visible `QuietGalleryCard` style.
 - A `ready_card_limited` card-action response blocks PNG generation and produces no download event.
 - Export failure leaves the current card visible, re-enables controls, and shows retry copy.
 - Tests do not require production-only test globals; observation hooks live in the Playwright page context and must not bypass production Blob URL cleanup.
@@ -658,6 +662,11 @@ drawFallbackIllustration(context, card.accent)
 drawSentence(context, card.sentence)
 ```
 
+```typescript
+// Captures a transient JS animation pose if the user clicks during entrance.
+await exportReadyCardToPng(cardNode, card)
+```
+
 ```tsx
 // Captures too much and can include controls/source/prototype UI.
 await htmlToImage.toPng(document.body)
@@ -671,6 +680,18 @@ const blob = await toBlob(cardNode, {
   canvasWidth: READY_CARD_EXPORT_WIDTH,
   canvasHeight: READY_CARD_EXPORT_HEIGHT,
   pixelRatio: 1,
+})
+```
+
+```typescript
+gsap.killTweensOf(exportTargets)
+gsap.set(exportTargets, {
+  autoAlpha: 1,
+  x: 0,
+  y: 0,
+  scale: 1,
+  rotation: 0,
+  clearProps: "transform,opacity,visibility",
 })
 ```
 
@@ -731,15 +752,15 @@ const sharePayload = createReadyCardSharePayload(exportedCard)
 
 ### 4. Validation & Error Matrix
 
-| Condition                                                                                                          | Required behavior                                                                                     |
-| ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
-| Valid allowed `share` response and supported Web Share files (probe of the combined `{ files, title, text }` passes)| Export the current card, call `navigator.share` with one PNG `File`, and do not download.             |
+| Condition                                                                                                               | Required behavior                                                                                         |
+| ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Valid allowed `share` response and supported Web Share files (probe of the combined `{ files, title, text }` passes)    | Export the current card, call `navigator.share` with one PNG `File`, and do not download.                 |
 | Missing `navigator.share`/`navigator.canShare`, `canShare` throws, or `canShare` returns false for the combined payload | Export the current card, trigger PNG download, do not call `navigator.share`, and announce fallback copy. |
-| Current card was refreshed before share                                                                            | Shared/downloaded filename and pixels come from the refreshed card, not initial seed data.            |
-| Card-action response is blocked, invalid, or echoes the wrong action                                               | Do not export, call Web Share, or download; show limit/failure copy.                                  |
-| Export fails before capability branch                                                                              | Keep current card visible, re-enable controls, and show share failure copy.                           |
-| `navigator.share` rejects with `AbortError` (user cancelled the share sheet)                                       | Keep current card visible, re-enable controls, show calm non-retry copy, and do not download.         |
-| `navigator.share` rejects with any other error (e.g. `NotAllowedError`)                                            | Keep current card visible, re-enable controls, show non-technical retry copy, and do not download.    |
+| Current card was refreshed before share                                                                                 | Shared/downloaded filename and pixels come from the refreshed card, not initial seed data.                |
+| Card-action response is blocked, invalid, or echoes the wrong action                                                    | Do not export, call Web Share, or download; show limit/failure copy.                                      |
+| Export fails before capability branch                                                                                   | Keep current card visible, re-enable controls, and show share failure copy.                               |
+| `navigator.share` rejects with `AbortError` (user cancelled the share sheet)                                            | Keep current card visible, re-enable controls, show calm non-retry copy, and do not download.             |
+| `navigator.share` rejects with any other error (e.g. `NotAllowedError`)                                                 | Keep current card visible, re-enable controls, show non-technical retry copy, and do not download.        |
 
 ### 5. Good/Base/Bad Cases
 

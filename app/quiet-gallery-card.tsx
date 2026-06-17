@@ -9,7 +9,15 @@ type QuietGalleryCardProps = {
   isTilted: boolean
 }
 
-const sentenceBreakPunctuation = new Set(["，", "。", "、", "；", "：", "？", "！"])
+const sentenceBreakPunctuation = new Set([
+  "，",
+  "。",
+  "、",
+  "；",
+  "：",
+  "？",
+  "！",
+])
 const maxSentenceLines = 3
 
 function getFallbackLineCount(length: number) {
@@ -49,7 +57,8 @@ function groupClausesIntoLines(clauses: string[]) {
     if (lines.some((line) => line.length < 3)) return Number.POSITIVE_INFINITY
 
     return lines.reduce((score, line, index) => {
-      const widowPenalty = index === lines.length - 1 && line.length < 4 ? 12 : 0
+      const widowPenalty =
+        index === lines.length - 1 && line.length < 4 ? 12 : 0
       return score + (line.length - targetLength) ** 2 + widowPenalty
     }, 0)
   }
@@ -142,7 +151,7 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
         aria-label="图文卡片预览"
         data-card="quiet-gallery"
         className={cn(
-          "paper-grain relative grid aspect-[4/5] w-full max-w-[min(23.5rem,calc(100vw-2rem))] grid-rows-[3fr_1fr] overflow-hidden rounded-[2rem_1.45rem_2.15rem_1.55rem] bg-[var(--paper-card)] p-4 shadow-[0_20px_50px_rgba(var(--shadow-paper),0.16),0_1px_0_rgba(255,255,255,0.7)_inset] sm:max-w-[25rem] sm:p-5",
+          "paper-grain relative grid aspect-[4/5] w-full max-w-[min(23.5rem,calc(100vw-2rem))] grid-rows-[minmax(0,3fr)_minmax(5.25rem,auto)] overflow-hidden rounded-[2rem_1.45rem_2.15rem_1.55rem] bg-[var(--paper-card)] p-4 shadow-[0_20px_50px_rgba(var(--shadow-paper),0.16),0_1px_0_rgba(255,255,255,0.7)_inset] sm:max-w-[25rem] sm:grid-rows-[minmax(0,3fr)_minmax(7.25rem,auto)] sm:p-5",
           "motion-safe:transition motion-safe:duration-500 motion-safe:ease-out motion-reduce:transition-none",
           isTilted ? "motion-safe:-rotate-1" : "motion-safe:rotate-0",
           isRefreshing &&
@@ -157,7 +166,10 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
           aria-hidden="true"
           className="absolute top-5 right-5 z-20 h-px w-10 rotate-[3deg] bg-[var(--ink-sketch)]/22"
         />
-        <div className="relative z-10 overflow-hidden rounded-[1.55rem_1.15rem_1.45rem_1.2rem] bg-[var(--paper-mat)] p-2 shadow-[0_14px_30px_rgba(var(--shadow-paper),0.10),inset_0_0_0_1px_rgba(255,255,255,0.62)]">
+        <div
+          data-motion-card-illustration
+          className="relative z-10 overflow-hidden rounded-[1.55rem_1.15rem_1.45rem_1.2rem] bg-[var(--paper-mat)] p-2 shadow-[0_14px_30px_rgba(var(--shadow-paper),0.10),inset_0_0_0_1px_rgba(255,255,255,0.62)]"
+        >
           {card.illustrationUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -193,7 +205,10 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
             </div>
           )}
         </div>
-        <div className="relative z-10 flex items-center justify-center overflow-hidden px-5 pt-4 pb-2 text-center">
+        <div
+          data-motion-card-sentence
+          className="relative z-10 flex items-center justify-center overflow-hidden px-5 pt-4 pb-2 text-center"
+        >
           <span
             aria-hidden="true"
             className="absolute top-3 left-1/2 h-px w-14 -translate-x-1/2 bg-[var(--ink-sketch)]/38"

@@ -1,0 +1,2 @@
+{"file":".trellis/spec/frontend/quality-guidelines.md","reason":"Verification contracts for homepage behavior, reduced motion, refresh, download, and share continuity."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Ensure no route query/type-safety regressions are introduced while editing frontend files."}
