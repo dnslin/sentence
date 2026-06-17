@@ -473,6 +473,35 @@ test("renders the API-backed ready card on the homepage", async ({ page }) => {
   ).toBeVisible()
 })
 
+test("neutralizes non-essential homepage card motion for reduced-motion users", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  await page.goto("/")
+
+  const article = page.getByRole("article", { name: "图文卡片预览" })
+  await expect(article).toBeVisible()
+  await expect(page.getByRole("button", { name: "再来一张" })).toBeEnabled()
+
+  const motionState = await article.evaluate((node) => {
+    const styles = getComputedStyle(node)
+
+    return {
+      opacity: styles.opacity,
+      rotate: styles.rotate,
+      scale: styles.scale,
+      transform: styles.transform,
+      transitionDuration: styles.transitionDuration,
+    }
+  })
+
+  expect(motionState.opacity).toBe("1")
+  expect(["none", "0deg"]).toContain(motionState.rotate)
+  expect(["none", "1"]).toContain(motionState.scale)
+  expect(motionState.transform).toBe("none")
+  expect(motionState.transitionDuration).toBe("0s")
+})
+
 test("keeps a max-length sentence inside the quiet-gallery card", async ({
   page,
 }) => {
@@ -1133,8 +1162,7 @@ async function installWebShareInspection(
     Object.defineProperty(navigator, "canShare", {
       configurable: true,
       value: (data?: ShareData) => {
-        const hasOneFile =
-          Array.isArray(data?.files) && data.files.length === 1
+        const hasOneFile = Array.isArray(data?.files) && data.files.length === 1
         const hasCombinedMeta =
           typeof data?.title === "string" && typeof data?.text === "string"
 
