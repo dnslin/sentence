@@ -50,6 +50,15 @@ const seedCard = {
   illustrationUrl: null,
 } as const
 
+const longSentenceCard = {
+  id: "test-long-sentence-card",
+  sentence: "某些人喜好名利是“好大喜功”，某些人喜好名利是“人之常情”。",
+  sceneLabel: "测试长句插画场景",
+  accent: "rain",
+  status: "ready",
+  illustrationUrl: null,
+} as const
+
 const expectedCardActionMessages = {
   download: "PNG 可以开始准备；浏览器会下载当前这张图文卡片。",
   share: "分享可以开始准备；浏览器会分享或下载当前这张图文卡片。",
@@ -462,6 +471,33 @@ test("renders the API-backed ready card on the homepage", async ({ page }) => {
   await expect(
     page.getByRole("img", { name: seedCard.sceneLabel })
   ).toBeVisible()
+})
+
+test("keeps a max-length sentence inside the quiet-gallery card", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 325, height: 680 })
+  await page.route("**/api/ready-card", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ card: longSentenceCard }),
+    })
+  })
+
+  await page.goto("/")
+  await page.getByRole("button", { name: "再来一张" }).click()
+  await expect(page.getByText(`“${longSentenceCard.sentence}”`)).toBeVisible()
+
+  const article = page.getByRole("article", { name: "图文卡片预览" })
+  const paragraph = article.locator("p")
+  const sentencePanelOverflows = await paragraph.evaluate((node) => {
+    const panel = node.parentElement
+
+    return panel ? panel.scrollHeight > panel.clientHeight + 1 : true
+  })
+
+  expect(sentencePanelOverflows).toBe(false)
 })
 
 test("renders a calm empty-stock homepage when no ready cards exist", async ({

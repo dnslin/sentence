@@ -142,7 +142,7 @@ export const QuietGalleryCard = forwardRef<HTMLElement, QuietGalleryCardProps>(
         aria-label="图文卡片预览"
         data-card="quiet-gallery"
         className={cn(
-          "paper-grain relative grid aspect-[4/5] w-full max-w-[min(23.5rem,calc(100vw-2rem))] grid-rows-[3fr_1fr] overflow-hidden rounded-[2rem_1.45rem_2.15rem_1.55rem] bg-[var(--paper-card)] p-4 shadow-[0_20px_50px_rgba(var(--shadow-paper),0.16),0_1px_0_rgba(255,255,255,0.7)_inset] sm:max-w-[25rem] sm:p-5",
+          "paper-grain relative grid aspect-[4/5] w-full max-w-[min(23.5rem,calc(100vw-2rem))] grid-rows-[minmax(0,3fr)_minmax(5.25rem,auto)] overflow-hidden rounded-[2rem_1.45rem_2.15rem_1.55rem] bg-[var(--paper-card)] p-4 shadow-[0_20px_50px_rgba(var(--shadow-paper),0.16),0_1px_0_rgba(255,255,255,0.7)_inset] sm:max-w-[25rem] sm:grid-rows-[minmax(0,3fr)_minmax(7.25rem,auto)] sm:p-5",
           "motion-safe:transition motion-safe:duration-500 motion-safe:ease-out motion-reduce:transition-none",
           isTilted ? "motion-safe:-rotate-1" : "motion-safe:rotate-0",
           isRefreshing &&
