@@ -131,6 +131,8 @@ Accepted ADRs in `docs/adr/` describe the intended production shape:
 
 Do not introduce product semantics that conflict with these ADRs without updating or superseding the relevant ADR.
 
+See `docker/README.md` for build and run instructions, including the required `.env` configuration (`XAI_API_KEY`, optional `XAI_BASE_URL`, optional `JUHUA_ADMIN_TOKEN`) and the `juhua-data` named volume used for persistence.
+
 ## Trellis project context
 
 This repository is managed by Trellis. `AGENTS.md` points to working knowledge under `.trellis/`:
