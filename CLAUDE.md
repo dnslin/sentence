@@ -131,7 +131,7 @@ Accepted ADRs in `docs/adr/` describe the intended production shape:
 
 Do not introduce product semantics that conflict with these ADRs without updating or superseding the relevant ADR.
 
-See `docker/README.md` for build and run instructions, including the required `.env` configuration (`XAI_API_KEY`, optional `XAI_BASE_URL`, optional `JUHUA_ADMIN_TOKEN`) and the `juhua-data` named volume used for persistence.
+See `docker/README.md` for build and run instructions, including the required `.env` configuration (`XAI_API_KEY`, optional `XAI_BASE_URL`, optional `JUHUA_ADMIN_TOKEN`) and the `juhua-data` named volume used for persistence. Pushing a `v*.*.*` tag triggers `.github/workflows/release.yml` to build a `linux/amd64` image and publish it to ghcr.io, plus a GitHub Release.
 
 ## Trellis project context
 

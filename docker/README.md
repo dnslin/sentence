@@ -69,6 +69,31 @@ docker compose -f docker/docker-compose.yml restart worker
 docker volume inspect docker_juhua-data
 ```
 
+## CI-built images
+
+When a semantic version tag such as `v1.2.3` is pushed, `.github/workflows/release.yml` automatically builds and pushes a `linux/amd64` image to GitHub Container Registry. The published image coordinates follow the repository name:
+
+```text
+ghcr.io/<owner>/sentence:v1.2.3
+ghcr.io/<owner>/sentence:latest
+```
+
+To use the pre-built image on a VPS instead of building locally, change the services in `docker/docker-compose.yml` from:
+
+```yaml
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+```
+
+to:
+
+```yaml
+    image: ghcr.io/<owner>/sentence:v1.2.3
+```
+
+and remove the `build:` block. Make sure both `web` and `worker` services use the same image tag. The persisted `juhua-data` volume and `.env` configuration remain the same.
+
 ## Upgrades
 
 1. Pull or apply the new source code.
